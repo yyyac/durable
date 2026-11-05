@@ -9,6 +9,7 @@ import { openNodeSqliteStorage } from '@earendil-works/pi-durable/storage/sqlite
 import { join } from 'node:path';
 import type { ChatMessage, ConversationState, ContentBlock, ModelSelection } from '../src/types.js';
 import { SettingsStore, type StoredSettings } from './settings.js';
+import { addConversation } from './conversations.js';
 
 export const context = BACKGROUND_CONTEXT;
 
@@ -33,7 +34,7 @@ function displayMessage(id: string, message: Message): ChatMessage | null {
   if (message.role !== 'user' && message.role !== 'assistant') return null;
   const content: ContentBlock[] = typeof message.content === 'string' ? [{ type: 'text', text: message.content }] : message.content.flatMap((block): ContentBlock[] => {
     if (block.type === 'text') return [{ type: 'text', text: block.text }];
-    if (block.type === 'thinking' && block.thinking) return [{ type: 'thinking', thinking: block.thinking }];
+    if (block.type === 'thinking' && block.thinking && !block.redacted) return [{ type: 'thinking', thinking: block.thinking }];
     return [];
   });
   return { id, role: message.role, content, timestamp: message.timestamp, ...(message.role === 'assistant' ? { stopReason: message.stopReason } : {}) };
@@ -60,7 +61,12 @@ export class Runtime {
     const storage = await openNodeSqliteStorage(join(settings.directory, 'workbench.sqlite'));
     const harness = await Harness.open(storage, { models: () => modelsFor(settings.value), registry: createRegistry(), settings: { stream: { maxRetries: 0 }, compaction: { enabled: false } } }, context);
     const root = await harness.root(context, { agent: { tools: [], modelTools: [] } });
+    await harness.commit((tx) => addConversation(tx, root.id), context);
+    harness.resume();
     return new Runtime(harness, root, settings);
+  }
+  async createConversation() {
+    return this.harness.createConversation({ ownership: { kind: 'ownerless' }, agent: { tools: [], modelTools: [] }, init: addConversation }, context);
   }
   async conversation(id: string) {
     const numericId = Number(id);

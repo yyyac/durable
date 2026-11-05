@@ -22,7 +22,7 @@ export function ModelSelector({ settings, onSaved }: { settings: ModelSettings; 
   return <div className={styles.selector}>
     <Menu.Root>
       <Menu.Trigger className={styles.trigger} aria-label="选择模型" disabled={saving}>{selected?.model.name ?? '选择模型'}<ChevronDown size={14} /></Menu.Trigger>
-      <Menu.Portal><Menu.Content className={styles.menu} side="top" align="start" sideOffset={8}>
+      <Menu.Portal><Menu.Content className={styles.menu} side="top" align="end" sideOffset={8}>
         <Menu.RadioGroup value={JSON.stringify([selected?.service.id, selected?.model.id])} onValueChange={(value) => { void select(value); }}>
           {settings.services.filter((service) => service.models.length).map((service) => <Menu.Group key={service.id}>
             <Menu.Label className={styles.label}>{service.name}</Menu.Label>

@@ -67,6 +67,10 @@ test('通过设置选择三种协议并向各自自定义地址发送真实请�
     await page.getByRole('button', { name: '保存配置' }).click();
     for (const [index, service] of services.entries()) {
       await page.getByRole('button', { name: '选择模型' }).click();
+      if (!index) {
+        await expect(page.getByRole('menuitemradio', { name: service.model, exact: true })).toBeVisible();
+        await page.screenshot({ path: 'C:/Users/yyya/.codex/visualizations/2026/11/05/01a1aa98-cbf6-74a3-b305-5cdf00994c45/model-menu.png' });
+      }
       await page.getByRole('menuitemradio', { name: service.model, exact: true }).click();
       await expect(page.getByRole('button', { name: '选择模型' })).toHaveText(service.model);
       await page.getByRole('textbox', { name: '输入消息' }).fill(`使用 ${service.model}`);
@@ -148,6 +152,7 @@ test('设置页保存多个模型服务与模型，重启后仍只显示脱敏�
   await page.getByRole('button', { name: '推理服务', exact: true }).click();
   await expect(page.getByLabel('支持思考内容', { exact: true })).toBeChecked();
   await expect(page.getByText('已保存密钥：••••', { exact: true })).toBeVisible();
+  await page.screenshot({ path: 'C:/Users/yyya/.codex/visualizations/2026/11/05/01a1aa98-cbf6-74a3-b305-5cdf00994c45/model-settings.png' });
   const summary = await (await page.request.get(`${workbench.url}/api/settings`)).text();
   expect(summary).not.toContain('test-service-secret');
   expect(summary).not.toContain('tiny');

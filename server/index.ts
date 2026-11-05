@@ -6,6 +6,7 @@ import { SettingsStore } from './settings.js';
 import { Runtime, context, stateFrom } from './runtime.js';
 import { ConversationBusy } from '@earendil-works/pi-durable';
 import { streamSSE } from 'hono/streaming';
+import { listConversations, titleConversation } from './conversations.js';
 
 const app = new Hono();
 const settings = new SettingsStore(resolve(process.env.WORKBENCH_DATA_DIR ?? '.data'));
@@ -22,6 +23,12 @@ app.put('/api/settings/selection', async (c) => {
   catch (error) { return c.json({ error: (error as Error).message }, 400); }
 });
 app.get('/api/conversation', (c) => c.json({ id: String(runtime.root.id) }));
+app.get('/api/conversations', async (c) => c.json(await listConversations(runtime.harness)));
+app.post('/api/conversations', async (c) => {
+  const conversation = await runtime.createConversation();
+  const summaries = await listConversations(runtime.harness);
+  return c.json(summaries.find((item) => item.id === String(conversation.id))!, 201);
+});
 app.post('/api/conversations/:id/messages', async (c) => {
   try {
     const input = await c.req.json();
@@ -29,6 +36,7 @@ app.post('/api/conversations/:id/messages', async (c) => {
     const conversation = await runtime.conversation(c.req.param('id'));
     await runtime.prepare(conversation, input.modelSelection);
     const submission = await conversation.submit({ type: 'input', content: input.content.trim(), whenBusy: 'reject' }, context);
+    await titleConversation(runtime.harness, conversation.id, input.content);
     return c.json({ id: submission.id }, 202);
   } catch (error) {
     return c.json({ error: error instanceof ConversationBusy ? '当前会话正在生成，请等待完成' : (error as Error).message }, error instanceof ConversationBusy ? 409 : 400);

@@ -7,8 +7,8 @@ import { spawn, type ChildProcess } from 'node:child_process';
 import { once } from 'node:events';
 import { fileURLToPath } from 'node:url';
 
-type Plan = { chunks: string[]; pauseAfter?: number };
-type UpstreamRequest = { model: string; messages: Array<{ role: string; content: unknown }> };
+type Plan = { chunks: Array<string | { thinking: string } | { redacted: string }>; pauseAfter?: number };
+type UpstreamRequest = { model: string; messages: Array<{ role: string; content: unknown }>; reasoning_effort?: string };
 
 export class Upstream {
   readonly requests: UpstreamRequest[] = [];
@@ -20,9 +20,13 @@ export class Upstream {
     this.requests.push(JSON.parse(body));
     const plan = this.plans.shift() ?? { chunks: ['测试回复'] };
     res.writeHead(200, { 'content-type': 'text/event-stream' });
+    if (new URL(req.url ?? '/', 'http://localhost').pathname.endsWith('/messages')) {
+      await this.messages(res, plan);
+      return;
+    }
     this.chunk(res, { role: 'assistant' });
-    for (const [index, text] of plan.chunks.entries()) {
-      this.chunk(res, { content: text });
+    for (const [index, block] of plan.chunks.entries()) {
+      this.chunk(res, typeof block === 'string' ? { content: block } : 'thinking' in block ? { reasoning_content: block.thinking } : { reasoning_details: [{ type: 'reasoning.encrypted', data: block.redacted }] });
       if (plan.pauseAfter === index) await new Promise<void>((resolve) => this.releases.push(resolve));
       await new Promise((resolve) => setTimeout(resolve, 150));
     }
@@ -31,6 +35,29 @@ export class Upstream {
   });
   private chunk(res: ServerResponse, delta: object) {
     res.write(`data: ${JSON.stringify({ id: 'chat-test', object: 'chat.completion.chunk', created: 1, model: 'test-model', choices: [{ index: 0, delta, finish_reason: null }] })}\n\n`);
+  }
+  private async messages(res: ServerResponse, plan: Plan) {
+    const event = (type: string, value: object) => res.write(`event: ${type}\ndata: ${JSON.stringify({ type, ...value })}\n\n`);
+    event('message_start', { message: { id: 'msg-test', type: 'message', role: 'assistant', model: 'test-model', content: [], stop_reason: null, stop_sequence: null, usage: { input_tokens: 10, output_tokens: 0 } } });
+    let blockIndex = -1;
+    let previousType = '';
+    for (const [index, block] of plan.chunks.entries()) {
+      const type = typeof block === 'string' ? 'text' : 'thinking' in block ? 'thinking' : 'redacted_thinking';
+      if (type !== previousType || type === 'redacted_thinking') {
+        if (blockIndex >= 0) event('content_block_stop', { index: blockIndex });
+        blockIndex++;
+        event('content_block_start', { index: blockIndex, content_block: type === 'text' ? { type, text: '' } : type === 'thinking' ? { type, thinking: '' } : { type, data: typeof block === 'object' && 'redacted' in block ? block.redacted : '' } });
+        previousType = type;
+      }
+      if (typeof block === 'string') event('content_block_delta', { index: blockIndex, delta: { type: 'text_delta', text: block } });
+      else if ('thinking' in block) event('content_block_delta', { index: blockIndex, delta: { type: 'thinking_delta', thinking: block.thinking } });
+      if (plan.pauseAfter === index) await new Promise<void>((resolve) => this.releases.push(resolve));
+      await new Promise((resolve) => setTimeout(resolve, 150));
+    }
+    if (blockIndex >= 0) event('content_block_stop', { index: blockIndex });
+    event('message_delta', { delta: { stop_reason: 'end_turn', stop_sequence: null }, usage: { output_tokens: 10 } });
+    event('message_stop', {});
+    res.end();
   }
   enqueue(plan: Plan) { this.plans.push(plan); }
   release() { this.releases.splice(0).forEach((resolve) => resolve()); }
@@ -66,6 +93,12 @@ export class Workbench {
     if (!this.process || this.process.exitCode !== null) return;
     const exited = once(this.process, 'exit');
     this.process.kill();
+    await exited;
+  }
+  async crash() {
+    if (!this.process || this.process.exitCode !== null) return;
+    const exited = once(this.process, 'exit');
+    this.process.kill('SIGKILL');
     await exited;
   }
 }

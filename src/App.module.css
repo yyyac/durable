@@ -10,7 +10,12 @@ button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 2px
 .sidebar h1 { display: flex; align-items: center; gap: 9px; margin: 0 5px 30px; font-size: 14px; font-weight: 500; white-space: nowrap; }
 .logo { display: inline-flex; justify-content: center; align-items: center; background: #2588ff; color: white; width: 30px; height: 21px; font-weight: 700; border-radius: 6px; }
 .sectionLabel { color: #969ca3; padding: 0 8px; margin: 14px 0; font-size: 12px; }
-.selected { text-align: left; border-radius: 8px; padding: 9px 14px; background: #eceff1; }
+.selected, .conversation { display: block; width: 100%; text-align: left; border-radius: 8px; padding: 9px 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.selected { background: #eceff1; }
+.conversation:hover { background: #eceff1; }
+.newConversation { display: flex; align-items: center; gap: 10px; padding: 10px; text-align: left; border-radius: 8px; }
+.newConversation:hover { background: #eceff1; }
+.conversations { min-height: 0; overflow-y: auto; }
 .settingsTrigger { margin-top: auto; display: flex; align-items: center; gap: 10px; padding: 10px; border-radius: 8px; text-align: left; }
 .settingsTrigger:hover { background: #eceff1; }
 .main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
@@ -31,6 +36,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 2px
 .formColumns { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
 .primary { padding: 10px 18px; background: #202226; color: white; border-radius: 8px; }
 .error { color: #bd3535 !important; }
+.connection { color: #73777e; font-size: 12px; margin: 0 0 8px; }
 .transcript { max-width: 728px; margin: 0 auto; }
 .transcript article { margin-bottom: 26px; line-height: 1.8; white-space: pre-wrap; overflow-wrap: anywhere; }
 .transcript time { display: block; font-size: 12px; color: #92969c; margin-top: 6px; }

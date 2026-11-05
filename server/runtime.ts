@@ -4,7 +4,7 @@ import { openAICompletionsApi } from '@earendil-works/pi-ai/api/openai-completio
 import { openAIResponsesApi } from '@earendil-works/pi-ai/api/openai-responses.lazy';
 import { anthropicMessagesApi } from '@earendil-works/pi-ai/api/anthropic-messages.lazy';
 import type { Message } from '@earendil-works/pi-ai';
-import { createRegistry, Harness, LiveDoc, type Conversation, type ConversationView, type EntryRecord, type Cursor, type ConversationId } from '@earendil-works/pi-durable';
+import { configure, ConversationBusy, createRegistry, Harness, LiveDoc, type Conversation, type ConversationView, type EntryRecord, type Cursor, type ConversationId, type Tx } from '@earendil-works/pi-durable';
 import { openNodeSqliteStorage } from '@earendil-works/pi-durable/storage/sqlite/node';
 import { join } from 'node:path';
 import type { ChatMessage, ConversationState, ContentBlock, ModelSelection } from '../src/types.js';
@@ -93,27 +93,39 @@ export class Runtime {
     if (!conversation) throw new Error('会话不存在');
     return conversation;
   }
-  async prepare(conversation: Conversation, selection?: ModelSelection) {
+  private async configure(tx: Tx, conversation: Conversation, selection?: ModelSelection) {
     const { service, model } = this.settings.model(selection);
-    await conversation.configure({ model: { provider: service.id, modelId: model.modelId }, thinkingLevel: model.supportsThinking ? 'medium' : 'off', tools: [], modelTools: [] }, context);
+    await configure(tx, conversation.id, { model: { provider: service.id, modelId: model.modelId }, thinkingLevel: model.supportsThinking ? 'medium' : 'off', tools: [], modelTools: [] });
   }
-  async retry(conversation: Conversation) {
+  async send(conversation: Conversation, content: string, selection?: ModelSelection) {
+    const id = await conversation.commit(async (tx) => {
+      const live = await tx.doc(LiveDoc, conversation.id);
+      if (live.run) throw new ConversationBusy(conversation.id);
+      await this.configure(tx, conversation, selection);
+      return conversation.submit(tx, { type: 'input', content, whenBusy: 'reject' });
+    }, context);
+    this.harness.resume();
+    return id;
+  }
+  async retry(conversation: Conversation, selection?: ModelSelection) {
     const id = await conversation.commit(async (tx) => {
       const live = await tx.doc(LiveDoc, conversation.id);
       if (live.run || !canRetryReply(live.runFailure)) return null;
+      await this.configure(tx, conversation, selection);
       return conversation.submit(tx, { type: 'continue' });
     }, context);
     if (id !== null) this.harness.resume();
     return id;
   }
   async stop(conversation: Conversation) {
-    await conversation.commit(async (tx) => {
+    const taskId = await conversation.commit(async (tx) => {
       const live = await tx.doc(LiveDoc, conversation.id);
       if (live.run) {
         await tx.appendEntry(conversation.id, { kind: STOP_ENTRY_KIND, data: { taskId: live.run.taskId, timestamp: live.generation?.message?.timestamp ?? null } });
+        return live.run.taskId;
       }
     }, context);
-    await conversation.abort(context);
+    if (taskId !== undefined) await this.harness.abortTask(taskId, context);
   }
   async olderEntries(conversation: Conversation, view: ConversationView) {
     const entries: EntryRecord[] = [];

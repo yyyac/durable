@@ -1,13 +1,14 @@
+import { openModelSettings, saveModelSettings } from './configure-model';
 import { test, expect } from './fixtures';
 
 test('会话重命名针对菜单所选记录并持久化，当前标题同步且其它历史不变', async ({ page, workbench, upstream }) => {
   await page.goto(workbench.url);
-  await page.getByRole('button', { name: '打开设置' }).click();
+  await openModelSettings(page);
   await page.getByLabel('接口地址').fill(upstream.url);
   await page.getByLabel('API Key', { exact: true }).fill('management-test-key');
   await page.getByLabel('模型 ID', { exact: true }).fill('test-model');
   await page.getByLabel('模型名称', { exact: true }).fill('会话管理模型');
-  await page.getByRole('button', { name: '保存配置' }).click();
+  await saveModelSettings(page);
   for (const title of ['甲的原始问题', '乙的独立问题']) {
     if (title.startsWith('乙')) await page.getByRole('button', { name: '新建会话', exact: true }).click();
     upstream.enqueue({ chunks: [`${title}的答案`] });
@@ -32,12 +33,12 @@ test('会话重命名针对菜单所选记录并持久化，当前标题同步�
 
 test('搜索打开归档会话，菜单操作不串改其它会话且刷新后仍可读取历史', async ({ page, workbench, upstream }) => {
   await page.goto(workbench.url);
-  await page.getByRole('button', { name: '打开设置' }).click();
+  await openModelSettings(page);
   await page.getByLabel('接口地址').fill(upstream.url);
   await page.getByLabel('API Key', { exact: true }).fill('archive-test-key');
   await page.getByLabel('模型 ID', { exact: true }).fill('test-model');
   await page.getByLabel('模型名称', { exact: true }).fill('归档测试模型');
-  await page.getByRole('button', { name: '保存配置' }).click();
+  await saveModelSettings(page);
   for (const title of ['甲的项目', '乙的计划']) {
     if (title.startsWith('乙')) await page.getByRole('button', { name: '新建会话', exact: true }).click();
     upstream.enqueue({ chunks: [`${title}的历史`] });

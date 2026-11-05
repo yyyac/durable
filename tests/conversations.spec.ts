@@ -1,13 +1,14 @@
+import { openModelSettings, saveModelSettings } from './configure-model';
 import { test, expect } from './fixtures';
 
 test('创建和切换独立会话，刷新后保留列表、选择和各自历史', async ({ page, workbench, upstream }) => {
   await page.goto(workbench.url);
-  await page.getByRole('button', { name: '打开设置' }).click();
+  await openModelSettings(page);
   await page.getByLabel('接口地址').fill(upstream.url);
   await page.getByLabel('API Key', { exact: true }).fill('conversation-test-secret');
   await page.getByLabel('模型 ID').fill('test-model');
   await page.getByLabel('模型名称').fill('会话测试模型');
-  await page.getByRole('button', { name: '保存配置' }).click();
+  await saveModelSettings(page);
   upstream.enqueue({ chunks: ['甲会话的独立回复'] });
   await page.getByRole('textbox', { name: '输入消息' }).fill('甲会话问题');
   await page.getByRole('button', { name: '发送消息' }).click();
@@ -42,12 +43,12 @@ test('创建和切换独立会话，刷新后保留列表、选择和各自历�
 
 test('不同会话并行生成，离开和返回只切换观察，旧会话更新不会覆盖当前会话', async ({ page, workbench, upstream }) => {
   await page.goto(workbench.url);
-  await page.getByRole('button', { name: '打开设置' }).click();
+  await openModelSettings(page);
   await page.getByLabel('接口地址').fill(upstream.url);
   await page.getByLabel('API Key', { exact: true }).fill('parallel-test-secret');
   await page.getByLabel('模型 ID').fill('test-model');
   await page.getByLabel('模型名称').fill('并行测试模型');
-  await page.getByRole('button', { name: '保存配置' }).click();
+  await saveModelSettings(page);
   upstream.enqueue({ chunks: ['甲的开头', '和甲的结尾'], pauseAfter: 0 });
   await page.getByRole('textbox', { name: '输入消息' }).fill('正在生成的甲会话');
   await page.getByRole('button', { name: '发送消息' }).click();

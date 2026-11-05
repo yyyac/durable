@@ -89,12 +89,13 @@ export function App() {
         {state?.failure?.reason === 'aborted' && messages.at(-1)?.termination !== 'stopped' && <p role="status" className={styles.connection}>已停止</p>}
         {(error || listError) && <p role="alert" className={styles.error}>{error || listError}</p>}
         <form className={styles.composer} onSubmit={send}>
-          <textarea aria-label="输入消息" placeholder="输入消息…" value={input} onChange={(event) => setInput(event.target.value)} disabled={!selected || !state || state.busy || submitting || creating} onKeyDown={(event) => {
-            if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); }
-          }} />
-          <div className={styles.composerActions}><span>{state?.busy ? '工作中…' : selected ? '' : '请先配置模型'}</span>{settings && selected && <ModelSelector settings={settings} contextUsage={state?.contextUsage ?? null} onSaved={setSettings} />}{state?.busy ? <button type="button" aria-label="停止生成" className={styles.send} disabled={stopping} onClick={() => { void stop(); }}><Square size={12} fill="currentColor" /></button> : <button type="submit" aria-label="发送消息" className={styles.send} disabled={!selected || !state || submitting || creating}><ArrowUp size={18} /></button>}</div>
+          <div className={styles.composerInput}>
+            <textarea aria-label="输入消息" placeholder="输入消息…" rows={1} value={input} onChange={(event) => setInput(event.target.value)} disabled={!selected || !state || state.busy || submitting || creating} onKeyDown={(event) => {
+              if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); }
+            }} />
+          </div>
+          <div className={styles.composerActions}><span>{selected ? '' : '请先配置模型'}</span>{settings && selected && <ModelSelector settings={settings} contextUsage={state?.contextUsage ?? null} onSaved={setSettings} />}{state?.busy ? <button type="button" aria-label="停止生成" className={styles.send} disabled={stopping} onClick={() => { void stop(); }}><Square size={12} fill="currentColor" /></button> : <button type="submit" aria-label="发送消息" className={styles.send} disabled={!selected || !state || submitting || creating}><ArrowUp size={18} /></button>}</div>
         </form>
-        <p className={styles.inputHint}>Enter 发送，Shift + Enter 换行</p>
       </div>
     </main>
   </div>;

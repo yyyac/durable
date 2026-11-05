@@ -1,5 +1,5 @@
 import { test, expect } from './fixtures';
-import { configureModel } from './configure-model';
+import { configureModel, openModelSettings, saveModelSettings } from './configure-model';
 
 test('未配置模型时可以从设置入口开始配置', async ({ page, workbench }) => {
   await page.goto(workbench.url);
@@ -7,6 +7,8 @@ test('未配置模型时可以从设置入口开始配置', async ({ page, workb
   await expect(page.getByText('尚未配置模型')).toBeVisible();
   await page.getByRole('button', { name: '打开设置' }).click();
   await expect(page.getByRole('dialog', { name: '模型设置' })).toBeVisible();
+  await expect(page.getByText('尚未添加供应商', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: '添加供应商', exact: true }).click();
   await expect(page.getByLabel('接口地址')).toBeVisible();
 });
 
@@ -44,15 +46,15 @@ test('真实回复逐段显示，结束补齐尾段且可以携带有效上下�
 
 test('设置保存后只显示脱敏密钥，刷新后仍然保留模型', async ({ page, workbench, upstream }) => {
   await page.goto(workbench.url);
-  await page.getByRole('button', { name: '打开设置' }).click();
+  await openModelSettings(page);
   await page.getByLabel('接口地址').fill(upstream.url);
   await page.getByLabel('API Key', { exact: true }).fill('test-secret-do-not-echo');
   await page.getByLabel('模型 ID').fill('test-model');
   await page.getByLabel('模型名称').fill('本地测试模型');
-  await page.getByRole('button', { name: '保存配置' }).click();
+  await saveModelSettings(page);
   await expect(page.getByText('本地测试模型', { exact: true }).first()).toBeVisible();
   await page.reload();
-  await page.getByRole('button', { name: '打开设置' }).click();
+  await openModelSettings(page);
   await expect(page.getByLabel('API Key', { exact: true })).toHaveValue('');
   await expect(page.getByLabel('API Key', { exact: true })).toHaveAttribute('placeholder', '••••••••••••••••');
   await expect(page.getByText('已保存密钥', { exact: false })).toHaveCount(0);

@@ -1,5 +1,5 @@
 import { test, expect } from './fixtures';
-import { configureModel } from './configure-model';
+import { configureModel, openModelSettings } from './configure-model';
 const model = { name: '阅读测试模型', apiKey: 'reading-test-key' };
 
 test('真实思考默认折叠，展开后持续增长并在完成时保留展开与耗时', async ({ page, workbench, upstream }, testInfo) => {
@@ -23,7 +23,7 @@ test('真实思考默认折叠，展开后持续增长并在完成时保留展�
   await expect(page.getByTestId('assistant-message')).toContainText('这是最终正文。');
   await expect(page.getByRole('button', { name: '发送消息' })).toBeEnabled();
   expect(upstream.requests[0].reasoning_effort).toBe('medium');
-  await page.getByRole('button', { name: '打开设置' }).click();
+  await openModelSettings(page);
   await expect(page.getByRole('checkbox', { name: '支持思考内容' })).toBeChecked();
 });
 

@@ -1,14 +1,15 @@
+import { openModelSettings, saveModelSettings } from './configure-model';
 import { test, expect } from './fixtures';
 
 test('后端真实崩溃后保留历史并自动恢复未完成回复，完成任务不重新生成', async ({ page, workbench, upstream }) => {
   test.setTimeout(45_000);
   await page.goto(workbench.url);
-  await page.getByRole('button', { name: '打开设置' }).click();
+  await openModelSettings(page);
   await page.getByLabel('接口地址').fill(upstream.url);
   await page.getByLabel('API Key', { exact: true }).fill('recovery-test-secret');
   await page.getByLabel('模型 ID').fill('test-model');
   await page.getByLabel('模型名称').fill('恢复测试模型');
-  await page.getByRole('button', { name: '保存配置' }).click();
+  await saveModelSettings(page);
 
   upstream.enqueue({ chunks: ['已经完成的历史答案。'] });
   await page.getByRole('textbox', { name: '输入消息' }).fill('历史问题');
@@ -46,7 +47,7 @@ test('后端真实崩溃后保留历史并自动恢复未完成回复，完成�
   await expect(page.getByText('恢复后的完整答案，终态尾段。', { exact: true })).toHaveCount(1);
   await expect(page.getByRole('button', { name: '发送消息' })).toBeEnabled();
   expect(upstream.requests).toHaveLength(3);
-  await page.getByRole('button', { name: '打开设置' }).click();
+  await openModelSettings(page);
   await expect(page.getByLabel('API Key', { exact: true })).toHaveValue('');
   await expect(page.getByLabel('模型名称')).toHaveValue('恢复测试模型');
 });

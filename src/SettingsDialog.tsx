@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
-import { Settings, X, Plus, Trash2, Server, Eye, EyeOff } from 'lucide-react';
+import * as Menu from '@radix-ui/react-dropdown-menu';
+import { Settings, X, Plus, Trash2, Server, Eye, EyeOff, Check, ChevronDown, ChevronRight, ArrowLeft } from 'lucide-react';
 import type { ConfiguredModel, ModelService, ModelSettings } from './types';
 import { DEFAULT_CONTEXT_WINDOW, DEFAULT_MAX_TOKENS } from './types';
 import styles from './App.module.css';
@@ -10,35 +11,40 @@ type DraftModel = Omit<ConfiguredModel, 'contextWindow' | 'maxTokens'> & { conte
 type DraftService = Omit<ModelService, 'models'> & { apiKey: string; models: DraftModel[] };
 const newModel = (): DraftModel => ({ id: crypto.randomUUID(), modelId: '', name: '', contextWindow: DEFAULT_CONTEXT_WINDOW, maxTokens: DEFAULT_MAX_TOKENS, supportsThinking: false });
 const newService = (): DraftService => ({ id: crypto.randomUUID(), name: '模型服务', protocol: 'openai-completions', baseUrl: '', apiKey: '', hasApiKey: false, models: [newModel()] });
+const protocols: Array<{ value: ModelService['protocol']; label: string }> = [
+  { value: 'openai-completions', label: 'OpenAI Chat Completions' },
+  { value: 'openai-responses', label: 'OpenAI Responses' },
+  { value: 'anthropic-messages', label: 'Anthropic Messages' },
+];
 
 export function SettingsDialog({ settings, onSaved }: { settings: ModelSettings | null; onSaved: (settings: ModelSettings | null) => void }) {
   const [open, setOpen] = useState(false);
-  const [services, setServices] = useState<DraftService[]>([]);
-  const [activeId, setActiveId] = useState('');
+  const [active, setActive] = useState<DraftService | null>(null);
   const [showApiKey, setShowApiKey] = useState(false);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
-  const active = services.find((service) => service.id === activeId);
+  const services = settings?.services ?? [];
+  const editing = services.some((service) => service.id === active?.id);
   function changeOpen(value: boolean) {
     if (saving) return;
-    if (value) {
-      const drafts = settings?.services.length ? settings.services.map((service) => ({ ...service, models: service.models.map((model) => ({ ...model })), apiKey: '' })) : [newService()];
-      setServices(drafts); setActiveId(drafts[0].id); setError('');
-    } else {
-      setServices([]);
-    }
-    setShowApiKey(false); setOpen(value);
+    setActive(null); setError(''); setShowApiKey(false); setOpen(value);
   }
-  function selectService(id: string) { setActiveId(id); setShowApiKey(false); }
-  function update(change: Partial<DraftService>) { setServices((current) => current.map((service) => service.id === activeId ? { ...service, ...change } : service)); }
+  function returnToList() { setActive(null); setError(''); setShowApiKey(false); }
+  function editService(service: ModelService) { setActive({ ...service, apiKey: '', models: service.models.map((model) => ({ ...model })) }); setError(''); setShowApiKey(false); }
+  function update(change: Partial<DraftService>) { setActive((current) => current ? { ...current, ...change } : null); }
   function updateModel(id: string, change: Partial<DraftModel>) { if (active) update({ models: active.models.map((model) => model.id === id ? { ...model, ...change } : model) }); }
   async function save(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault(); setError(''); setSaving(true);
+    event.preventDefault();
+    if (!active) return;
+    await persist(editing ? services.map((service) => service.id === active.id ? active : service) : [...services, active]);
+  }
+  async function persist(nextServices: Array<ModelService | DraftService>) {
+    setError(''); setSaving(true);
     try {
-      const response = await fetch('/api/settings', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ services, selectedModel: settings?.selectedModel }) });
+      const response = await fetch('/api/settings', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ services: nextServices, selectedModel: settings?.selectedModel }) });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error);
-      onSaved(result); setServices([]); setShowApiKey(false); setOpen(false);
+      onSaved(result); returnToList();
     } catch (error) { setError((error as Error).message); }
     finally { setSaving(false); }
   }
@@ -47,23 +53,31 @@ export function SettingsDialog({ settings, onSaved }: { settings: ModelSettings 
     <Dialog.Portal>
       <Dialog.Overlay className={formStyles.overlay} />
       <Dialog.Content className={formStyles.dialog}>
-        <nav className={formStyles.navigation} aria-label="模型服务">
+        <nav className={formStyles.navigation} aria-label="设置分类">
           <Dialog.Title>模型设置</Dialog.Title>
-          <p className={formStyles.section}><Server size={16} />模型服务</p>
-          <div className={formStyles.serviceList}>{services.map((service) => <button key={service.id} type="button" disabled={saving} aria-current={service.id === activeId ? 'page' : undefined} className={service.id === activeId ? formStyles.active : ''} onClick={() => selectService(service.id)}>{service.name || '新模型服务'}</button>)}</div>
-          <button type="button" className={formStyles.addService} disabled={saving} onClick={() => { const service = newService(); setServices([...services, service]); selectService(service.id); }}><Plus size={16} />添加模型服务</button>
+          <button type="button" className={formStyles.section} aria-current="page" disabled={saving} onClick={returnToList}><Server size={16} />模型供应商</button>
         </nav>
-        <form className={formStyles.form} onSubmit={save}>
+        <Dialog.Description className={formStyles.visuallyHidden}>管理自定义供应商，配置接口、密钥及模型上下文和最大输出大小。</Dialog.Description>
+        {active ? <form className={formStyles.form} onSubmit={save}>
           <header className={formStyles.header}>
+            <button type="button" className={formStyles.back} aria-label="返回供应商列表" disabled={saving} onClick={returnToList}><ArrowLeft size={17} /></button>
             <span className={formStyles.serviceIcon}><Server size={18} /></span>
-            <h3>{active?.name || '模型服务'}</h3>
+            <h3>{editing ? active.name || '编辑供应商' : '添加供应商'}</h3>
           </header>
-          <Dialog.Description className={formStyles.visuallyHidden}>配置模型服务的接口、密钥及模型上下文和最大输出大小。</Dialog.Description>
           <div className={formStyles.scroll}>
             <fieldset className={formStyles.fields} disabled={saving}>
-              {active ? <>
                 <label className={formStyles.field}>服务名称<span className={formStyles.required} aria-hidden="true"> *</span><input aria-label="服务名称" value={active.name} onChange={(event) => update({ name: event.target.value })} placeholder="我的模型服务" required /></label>
-                <label className={formStyles.field}>接口协议<span className={formStyles.required} aria-hidden="true"> *</span><select aria-label="接口协议" value={active.protocol} onChange={(event) => update({ protocol: event.target.value as ModelService['protocol'] })}><option value="openai-completions">OpenAI Chat Completions</option><option value="openai-responses">OpenAI Responses</option><option value="anthropic-messages">Anthropic Messages</option></select></label>
+                <div className={formStyles.field}>
+                  <span>接口协议<span className={formStyles.required} aria-hidden="true"> *</span></span>
+                  <Menu.Root>
+                    <Menu.Trigger type="button" aria-label="接口协议" className={formStyles.protocolTrigger} disabled={saving}><span>{protocols.find((protocol) => protocol.value === active.protocol)?.label}</span><ChevronDown size={16} /></Menu.Trigger>
+                    <Menu.Portal><Menu.Content className={formStyles.protocolMenu} align="start" sideOffset={6} collisionPadding={12}>
+                      <Menu.RadioGroup value={active.protocol} onValueChange={(value) => update({ protocol: value as ModelService['protocol'] })}>
+                        {protocols.map((protocol) => <Menu.RadioItem key={protocol.value} value={protocol.value} className={formStyles.protocolOption}><span>{protocol.label}</span><Menu.ItemIndicator className={formStyles.protocolCheck}><Check size={15} /></Menu.ItemIndicator></Menu.RadioItem>)}
+                      </Menu.RadioGroup>
+                    </Menu.Content></Menu.Portal>
+                  </Menu.Root>
+                </div>
                 <label className={formStyles.field}>API Key<span className={formStyles.required} aria-hidden="true"> *</span>
                   <span className={formStyles.keyField}>
                     <input aria-label="API Key" type={showApiKey && active.apiKey ? 'text' : 'password'} autoComplete="new-password" className={active.hasApiKey ? formStyles.savedKey : undefined} value={active.apiKey} onChange={(event) => update({ apiKey: event.target.value })} placeholder={active.hasApiKey ? '••••••••••••••••' : '输入 API Key'} required={!active.hasApiKey} />
@@ -86,15 +100,26 @@ export function SettingsDialog({ settings, onSaved }: { settings: ModelSettings 
                   </div>; })}
                   <button type="button" className={formStyles.addModel} onClick={() => update({ models: [...active.models, newModel()] })}><Plus size={16} />添加模型</button>
                 </section>
-              </> : <p className={formStyles.empty}>尚未配置模型服务，可添加后开始对话。</p>}
             </fieldset>
             {error && <p role="alert" className={styles.error}>{error}</p>}
           </div>
           <footer className={formStyles.footer}>
-            {active && <button type="button" className={formStyles.deleteService} aria-label="移除模型服务" disabled={saving} onClick={() => { const next = services.filter((service) => service.id !== activeId); setServices(next); selectService(next[0]?.id ?? ''); }}>删除模型服务</button>}
-            <div className={formStyles.actions}><button type="button" disabled={saving} onClick={() => changeOpen(false)}>取消</button><button type="submit" className={formStyles.save} disabled={saving}>{saving ? '保存中…' : '保存配置'}</button></div>
+            {editing && <button type="button" className={formStyles.deleteService} aria-label="移除模型服务" disabled={saving} onClick={() => { void persist(services.filter((service) => service.id !== active.id)); }}>删除供应商</button>}
+            <div className={formStyles.actions}><button type="button" disabled={saving} onClick={returnToList}>取消</button><button type="submit" className={formStyles.save} disabled={saving}>{saving ? '保存中…' : '保存配置'}</button></div>
           </footer>
-        </form>
+        </form> : <section className={formStyles.providers} aria-label="供应商管理">
+          <header className={`${formStyles.header} ${formStyles.listHeader}`}><h3>模型供应商</h3><button type="button" className={formStyles.addService} onClick={() => setActive(newService())}><Plus size={16} />添加供应商</button></header>
+          <div className={formStyles.scroll}>
+            <section aria-label="自定义供应商">
+              <h4 className={formStyles.listTitle}>自定义供应商</h4>
+              {services.length ? <div className={formStyles.providerList}>{services.map((service) => <button key={service.id} type="button" className={formStyles.providerCard} aria-label={service.name} onClick={() => editService(service)}>
+                <span className={formStyles.serviceIcon}><Server size={18} /></span>
+                <span className={formStyles.providerInfo}><span className={formStyles.providerName}>{service.name}</span><span className={formStyles.protocolBadge}>{protocols.find((protocol) => protocol.value === service.protocol)?.label}</span></span>
+                <span className={formStyles.modelCount}>{service.models.length} 个模型</span><ChevronRight size={16} aria-hidden="true" />
+              </button>)}</div> : <div className={formStyles.empty}><Server size={28} /><p>尚未添加供应商</p><span>添加供应商后，即可配置接口和模型。</span></div>}
+            </section>
+          </div>
+        </section>}
         <Dialog.Close asChild><button className={formStyles.close} aria-label="关闭设置" disabled={saving}><X size={18} /></button></Dialog.Close>
       </Dialog.Content>
     </Dialog.Portal>

@@ -1,5 +1,5 @@
 import { test, expect } from './fixtures';
-import { configureModel } from './configure-model';
+import { configureModel, openModelSettings, saveModelSettings } from './configure-model';
 
 test('上下文按最近一次真实用量显示，切换模型、会话和重启后保持正确', async ({ page, workbench, upstream }) => {
   await page.goto(workbench.url);
@@ -17,12 +17,12 @@ test('上下文按最近一次真实用量显示，切换模型、会话和重�
   await page.getByRole('textbox', { name: '输入消息' }).fill('第二个问题');
   await page.getByRole('button', { name: '发送消息' }).click();
   await expect(indicator).toHaveAttribute('aria-valuetext', '已使用 30k / 100k tokens（30%）');
-  await page.getByRole('button', { name: '打开设置' }).click();
+  await openModelSettings(page);
   await page.getByRole('button', { name: '添加模型', exact: true }).click();
   await page.getByLabel('模型 ID 2', { exact: true }).fill('small-window');
   await page.getByLabel('模型名称 2', { exact: true }).fill('小窗口模型');
   await page.getByLabel('上下文 2', { exact: true }).fill('50000');
-  await page.getByRole('button', { name: '保存配置' }).click();
+  await saveModelSettings(page);
   await page.getByRole('button', { name: '选择模型' }).click();
   await page.getByRole('menuitemradio', { name: '小窗口模型', exact: true }).click();
   await expect(indicator).toHaveAttribute('aria-valuetext', '已使用约 30k / 50k tokens（60%）');

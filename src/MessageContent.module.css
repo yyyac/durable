@@ -2,8 +2,8 @@
 .thinkingToggle { display: flex; align-items: center; gap: 8px; padding: 3px 0; color: #82868c; font-size: inherit; line-height: 22px; }
 .thinkingToggle:hover { color: #454a52; }
 .expanded { transform: rotate(90deg); }
-.thinkingText { padding: 8px 0 0 29px; color: #8b8e94; white-space: pre-wrap; line-height: 1.6; }
-.markdown { white-space: normal; line-height: 1.7; }
+.thinkingText { padding: 8px 0 0 29px; color: #8b8e94; white-space: pre-wrap; line-height: 22px; }
+.markdown { white-space: normal; line-height: 22px; }
 .markdown > :first-child { margin-top: 0; }
 .markdown > :last-child { margin-bottom: 0; }
 .markdown p { margin: 0 0 14px; }
@@ -11,14 +11,14 @@
 .markdown ul, .markdown ol { padding-left: 24px; margin: 10px 0 16px; }
 .markdown li { margin: 6px 0; }
 .markdown a { color: #287be0; }
-.markdown code { font-family: Consolas, 'Courier New', monospace; font-size: 13px; background: #f3f3f4; border-radius: 4px; padding: 2px 4px; }
+.markdown code { font-family: Consolas, 'Courier New', monospace; font-size: 14px; background: #f3f3f4; border-radius: 4px; padding: 2px 4px; }
 .codeBlock { margin: 14px 0; border: 1px solid #e6e7e9; border-radius: 10px; overflow: hidden; background: #f7f8f9; }
-.codeToolbar { display: flex; align-items: center; justify-content: space-between; padding: 6px 12px; color: #8b9097; font-size: 12px; background: #f0f1f3; }
+.codeToolbar { display: flex; align-items: center; justify-content: space-between; padding: 6px 12px; color: #8b9097; font-size: 14px; line-height: 22px; background: #f0f1f3; }
 .codeBlock pre { margin: 0; padding: 14px; overflow-x: auto; white-space: pre; }
-.codeBlock code { padding: 0; background: transparent; line-height: 1.65; }
+.codeBlock code { padding: 0; background: transparent; line-height: 22px; }
 .copyButton { display: inline-flex; padding: 4px; color: #858a91; border-radius: 4px; }
 .copyButton:hover { color: #3a414a; background: #edf0f3; }
-.footer { display: flex; align-items: center; gap: 8px; margin-top: 6px; color: #92969c; font-size: 12px; }
+.footer { display: flex; align-items: center; gap: 8px; margin-top: 6px; color: #92969c; font-size: 14px; line-height: 20px; }
 .footer time { margin-top: 0; }
 .footer { flex-wrap: wrap; }
 .failure { color: #b54949; overflow-wrap: anywhere; }

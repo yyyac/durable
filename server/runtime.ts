@@ -1,11 +1,13 @@
 import { BACKGROUND_CONTEXT } from '@earendil-works/chord/context';
 import { createModels, createProvider } from '@earendil-works/pi-ai/models';
 import { openAICompletionsApi } from '@earendil-works/pi-ai/api/openai-completions.lazy';
+import { openAIResponsesApi } from '@earendil-works/pi-ai/api/openai-responses.lazy';
+import { anthropicMessagesApi } from '@earendil-works/pi-ai/api/anthropic-messages.lazy';
 import type { Message } from '@earendil-works/pi-ai';
 import { createRegistry, Harness, type Conversation, type ConversationView, type EntryRecord, type Cursor, type ConversationId } from '@earendil-works/pi-durable';
 import { openNodeSqliteStorage } from '@earendil-works/pi-durable/storage/sqlite/node';
 import { join } from 'node:path';
-import type { ChatMessage, ConversationState, ContentBlock } from '../src/types.js';
+import type { ChatMessage, ConversationState, ContentBlock, ModelSelection } from '../src/types.js';
 import { SettingsStore, type StoredSettings } from './settings.js';
 
 export const context = BACKGROUND_CONTEXT;
@@ -13,16 +15,16 @@ export const context = BACKGROUND_CONTEXT;
 function modelsFor(settings: StoredSettings | null) {
   const models = createModels();
   if (!settings) return models;
-  models.setProvider(createProvider({
-    id: 'configured',
-    baseUrl: settings.baseUrl,
-    auth: { apiKey: { name: 'API Key', resolve: async () => ({ auth: { apiKey: settings.apiKey } }) } },
-    models: [{
-      id: settings.modelId, name: settings.name, provider: 'configured', api: 'openai-completions',
-      baseUrl: settings.baseUrl, reasoning: false, input: ['text'],
+  for (const service of settings.services) models.setProvider(createProvider({
+    id: service.id,
+    baseUrl: service.baseUrl,
+    auth: { apiKey: { name: 'API Key', resolve: async () => ({ auth: { apiKey: service.apiKey } }) } },
+    models: service.models.map((model) => ({
+      id: model.modelId, name: model.name, provider: service.id, api: service.protocol,
+      baseUrl: service.baseUrl, reasoning: model.supportsThinking, input: ['text'],
       cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }, contextWindow: 131072, maxTokens: 16384,
-    }],
-    api: openAICompletionsApi(),
+    })),
+    api: service.protocol === 'anthropic-messages' ? anthropicMessagesApi() : service.protocol === 'openai-responses' ? openAIResponsesApi() : openAICompletionsApi(),
   }));
   return models;
 }
@@ -67,9 +69,9 @@ export class Runtime {
     if (!conversation) throw new Error('会话不存在');
     return conversation;
   }
-  async prepare(conversation: Conversation) {
-    if (!this.settings.value) throw new Error('尚未配置模型');
-    await conversation.configure({ model: { provider: 'configured', modelId: this.settings.value.modelId }, tools: [], modelTools: [] }, context);
+  async prepare(conversation: Conversation, selection?: ModelSelection) {
+    const { service, model } = this.settings.model(selection);
+    await conversation.configure({ model: { provider: service.id, modelId: model.modelId }, thinkingLevel: model.supportsThinking ? 'medium' : 'off', tools: [], modelTools: [] }, context);
   }
   async olderEntries(conversation: Conversation, view: ConversationView) {
     const entries: EntryRecord[] = [];

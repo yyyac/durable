@@ -1,0 +1,26 @@
+.dialog { position: fixed; inset: 50% auto auto 50%; transform: translate(-50%, -50%); display: flex; width: min(880px, calc(100vw - 40px)); height: min(680px, calc(100dvh - 48px)); border-radius: 16px; background: #fff; box-shadow: 0 12px 60px #0003; overflow: hidden; }
+.navigation { width: 184px; flex-shrink: 0; padding: 20px 8px; border-right: 1px solid #e5e5e5; display: flex; flex-direction: column; gap: 8px; }
+.navigation h2 { font-size: 16px; margin: 0 12px 14px; }
+.section { display: flex; align-items: center; gap: 10px; padding: 10px; margin: 0; color: #555; }
+.serviceList { flex: 1; overflow-y: auto; }
+.serviceList button { display: block; width: 100%; text-align: left; padding: 10px; border-radius: 8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.serviceList button:hover, .active { background: #f3f3f3; }
+.addService { display: flex; gap: 6px; align-items: center; padding: 10px; font-size: 13px; }
+.form { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.scroll { padding: 46px 32px 18px; overflow-y: auto; flex: 1; min-height: 0; }
+.scroll > p { font-size: 12px; color: #92969c; margin: 0 0 18px; }
+.scroll label { display: flex; flex-direction: column; gap: 7px; margin: 14px 0; font-size: 13px; }
+.scroll input, .scroll select { border: 1px solid #dfe1e5; border-radius: 7px; padding: 8px 10px; width: 100%; background: #fff; font: inherit; }
+.titleRow { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.titleRow h3 { font-size: 14px; font-weight: 500; margin: 14px 0 4px; }
+.titleRow button { display: flex; align-items: center; gap: 5px; font-size: 12px; padding: 5px; }
+.model { border-bottom: 1px solid #eee; padding-bottom: 7px; }
+.modelFields { display: flex; gap: 12px; align-items: center; }
+.modelFields label { flex: 1; min-width: 0; }
+.modelFields > button { margin-top: 26px; padding: 3px; }
+.scroll .checkbox { flex-direction: row; align-items: center; margin: 0 0 10px; }
+.checkbox input { width: auto; }
+.footer { border-top: 1px solid #eee; display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 16px 24px; }
+.footer span { font-size: 11px; color: #92969c; }
+.footer button { white-space: nowrap; }
+@media (max-width: 650px) { .navigation { width: 140px; } .scroll { padding: 38px 16px 16px; } .modelFields { flex-wrap: wrap; gap: 4px; } .footer { padding: 12px; } .footer span { max-width: 150px; } }

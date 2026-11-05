@@ -17,13 +17,17 @@ app.put('/api/settings', async (c) => {
   try { return c.json(await settings.save(await c.req.json())); }
   catch (error) { return c.json({ error: (error as Error).message }, 400); }
 });
+app.put('/api/settings/selection', async (c) => {
+  try { return c.json(await settings.select(await c.req.json())); }
+  catch (error) { return c.json({ error: (error as Error).message }, 400); }
+});
 app.get('/api/conversation', (c) => c.json({ id: String(runtime.root.id) }));
 app.post('/api/conversations/:id/messages', async (c) => {
   try {
     const input = await c.req.json();
     if (typeof input.content !== 'string' || !input.content.trim()) return c.json({ error: '请输入消息' }, 400);
     const conversation = await runtime.conversation(c.req.param('id'));
-    await runtime.prepare(conversation);
+    await runtime.prepare(conversation, input.modelSelection);
     const submission = await conversation.submit({ type: 'input', content: input.content.trim(), whenBusy: 'reject' }, context);
     return c.json({ id: submission.id }, 202);
   } catch (error) {

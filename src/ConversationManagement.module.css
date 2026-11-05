@@ -1,0 +1,34 @@
+.row { display: flex; align-items: center; position: relative; border-radius: 7px; }
+.row > button:first-child { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; background: transparent; padding-right: 34px; }
+.row[aria-current="page"] { background: #eceff1; }
+.row:hover { background: #eceff1; }
+.menuTrigger { position: absolute; right: 5px; display: flex; align-items: center; justify-content: center; width: 25px; height: 25px; border-radius: 5px; color: #73777e; opacity: 0; }
+.row:hover .menuTrigger, .menuTrigger:focus-visible, .menuTrigger[data-state="open"] { opacity: 1; }
+.menu { min-width: 156px; padding: 5px; background: white; border: 1px solid #e5e6e8; border-radius: 9px; box-shadow: 0 5px 20px #0002; z-index: 20; }
+.menuItem { display: flex; align-items: center; gap: 9px; padding: 8px 10px; border-radius: 5px; outline: none; cursor: pointer; }
+.menuItem[data-highlighted] { background: #f1f2f4; }
+.overlay { position: fixed; inset: 0; background: #0004; z-index: 30; }
+.renameDialog { position: fixed; left: 50%; top: 35%; transform: translate(-50%, -50%); width: min(440px, calc(100vw - 32px)); padding: 24px; border-radius: 16px; background: white; box-shadow: 0 12px 60px #0003; z-index: 31; }
+.renameDialog h2 { margin: 0 0 10px; font-size: 17px; }
+.renameDialog p { color: #868c94; font-size: 13px; }
+.renameDialog label { display: flex; flex-direction: column; gap: 8px; margin-top: 20px; }
+.renameDialog input { width: 100%; border: 1px solid #dfe1e5; border-radius: 8px; padding: 10px 12px; }
+.actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 24px; }
+.actions button { padding: 8px 14px; border: 1px solid #e1e3e6; border-radius: 7px; }
+.actions button[type="submit"] { background: #22252a; color: white; border-color: #22252a; }
+.close { position: absolute; right: 16px; top: 16px; display: flex; padding: 4px; color: #73777e; }
+.error { color: #bd3535 !important; }
+.searchTrigger { display: flex; align-items: center; gap: 9px; padding: 8px 10px; text-align: left; border-radius: 7px; }
+.searchTrigger:hover { background: #eceff1; }
+.searchTrigger kbd { margin-left: auto; font-size: 10px; color: #9a9fa6; border: 1px solid #dfe1e5; border-radius: 3px; padding: 1px 4px; }
+.searchDialog { position: fixed; left: 50%; top: 10%; transform: translateX(-50%); width: min(640px, calc(100vw - 32px)); max-height: 80dvh; display: flex; flex-direction: column; padding: 22px; border-radius: 16px; background: white; box-shadow: 0 12px 60px #0003; z-index: 31; }
+.searchDialog h2 { margin: 0 0 6px; font-size: 16px; }
+.searchDialog > p { font-size: 12px; color: #969ca3; margin: 0 0 20px; }
+.searchInput { width: 100%; padding: 11px 12px; border: 1px solid #dfe1e5; border-radius: 8px; flex-shrink: 0; }
+.searchResults { flex: 1; overflow: auto; min-height: 170px; margin: 16px -8px 8px; }
+.searchResults button { display: flex; width: 100%; align-items: center; gap: 12px; padding: 12px; border-radius: 7px; text-align: left; }
+.searchResults button:hover, .searchResults button:focus-visible { background: #f0f2f4; }
+.searchResults button > span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.searchResults > p { text-align: center; color: #969ca3; padding-top: 45px; }
+.archived { margin-left: auto; flex-shrink: 0; font-size: 11px; color: #999fa6; }
+.searchFooter { flex-shrink: 0; margin: 8px -22px -22px; padding: 12px 22px; border-top: 1px solid #f0f1f3; color: #a0a5ac; font-size: 11px; }

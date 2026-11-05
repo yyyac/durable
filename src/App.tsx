@@ -17,7 +17,7 @@ export function App() {
   const [stopping, setStopping] = useState(false);
   const [error, setError] = useState('');
   const selected = selectedModel(settings);
-  const { conversations, selectedId, select, create, creating, refresh, error: listError } = useConversations();
+  const { conversations, selectedId, select, create, creating, refresh, rename, archive, error: listError } = useConversations();
   const { state, connection } = useConversation(selectedId);
   const currentId = useRef(selectedId);
   currentId.current = selectedId;
@@ -67,7 +67,7 @@ export function App() {
   const messages = [...(state?.messages ?? []), ...(state?.generation ? [state.generation] : [])];
   const { scrollRef, onScroll } = useFollowingScroll(state?.id, messages);
   return <div className={styles.workbench}>
-    <Sidebar conversations={conversations} selectedId={selectedId} onSelect={select} onCreate={() => { void create(); }} creating={creating || !selectedId}>
+    <Sidebar conversations={conversations} selectedId={selectedId} onSelect={select} onCreate={() => { void create(); }} onRename={rename} onArchive={archive} creating={creating || !selectedId}>
       <SettingsDialog settings={settings} onSaved={setSettings} />
     </Sidebar>
     <main className={styles.main}>

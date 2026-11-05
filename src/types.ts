@@ -46,4 +46,5 @@ export type ConversationSummary = {
   id: string;
   title: string;
   createdAt: number;
+  archived?: boolean;
 };

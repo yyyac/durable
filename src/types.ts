@@ -1,10 +1,23 @@
-export interface ModelSettings {
-  baseUrl: string;
-  modelId: string;
+export type ModelProtocol = 'openai-completions' | 'openai-responses' | 'anthropic-messages';
+export interface ConfiguredModel { id: string; modelId: string; name: string; supportsThinking: boolean }
+export interface ModelService {
+  id: string;
   name: string;
+  protocol: ModelProtocol;
+  baseUrl: string;
   apiKeyMasked: string;
-  supportsThinking?: boolean;
-  protocol?: 'openai-completions' | 'anthropic-messages';
+  models: ConfiguredModel[];
+}
+export interface ModelSelection { serviceId: string; modelId: string }
+export interface ModelSettings {
+  version: 2;
+  services: ModelService[];
+  selectedModel: ModelSelection | null;
+}
+export function selectedModel(settings: ModelSettings | null) {
+  const service = settings?.services.find((item) => item.id === settings.selectedModel?.serviceId);
+  const model = service?.models.find((item) => item.id === settings?.selectedModel?.modelId);
+  return service && model ? { service, model } : null;
 }
 
 export type ContentBlock = { type: 'text'; text: string } | { type: 'thinking'; thinking: string };

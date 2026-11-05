@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
-import { ArrowUp } from 'lucide-react';
+import { ArrowUp, Square } from 'lucide-react';
 import { SettingsDialog } from './SettingsDialog';
 import { MessageContent } from './MessageContent';
 import { useFollowingScroll } from './useFollowingScroll';
@@ -13,6 +13,7 @@ export function App() {
   const [settings, setSettings] = useState<ModelSettings | null>(null);
   const [input, setInput] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [stopping, setStopping] = useState(false);
   const [error, setError] = useState('');
   const { conversations, selectedId, select, create, creating, refresh, error: listError } = useConversations();
   const { state, connection } = useConversation(selectedId);
@@ -23,6 +24,7 @@ export function App() {
     setInput('');
     setError('');
     setSubmitting(false);
+    setStopping(false);
   }, [selectedId]);
   async function send(event: FormEvent) {
     event.preventDefault();
@@ -49,6 +51,17 @@ export function App() {
     } catch (error) { if (currentId.current === retryingId) setError((error as Error).message); }
     finally { if (currentId.current === retryingId) setSubmitting(false); }
   }
+  async function stop() {
+    if (!state?.busy || stopping) return;
+    const stoppingId = state.id;
+    setStopping(true);
+    setError('');
+    try {
+      const response = await fetch(`/api/conversations/${stoppingId}/stop`, { method: 'POST' });
+      if (!response.ok) throw new Error((await response.json()).error);
+    } catch (error) { if (currentId.current === stoppingId) setError((error as Error).message); }
+    finally { if (currentId.current === stoppingId) setStopping(false); }
+  }
   const messages = [...(state?.messages ?? []), ...(state?.generation ? [state.generation] : [])];
   const { scrollRef, onScroll } = useFollowingScroll(state?.id, messages);
   return <div className={styles.workbench}>
@@ -68,12 +81,13 @@ export function App() {
       </div>
       <div className={styles.composerArea}>
         {connection === 'reconnecting' && <p role="status" className={styles.connection}>连接已断开，正在重连…</p>}
+        {state?.failure?.reason === 'aborted' && messages.at(-1)?.termination !== 'stopped' && <p role="status" className={styles.connection}>已停止</p>}
         {(error || listError) && <p role="alert" className={styles.error}>{error || listError}</p>}
         <form className={styles.composer} onSubmit={send}>
           <textarea aria-label="输入消息" placeholder="输入消息…" value={input} onChange={(event) => setInput(event.target.value)} disabled={!settings || !state || state.busy || submitting} onKeyDown={(event) => {
             if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); }
           }} />
-          <div className={styles.composerActions}><span>{state?.busy ? '工作中…' : settings?.name ?? '请先配置模型'}</span><button type="submit" aria-label="发送消息" className={styles.send} disabled={!settings || !state || state.busy || submitting}><ArrowUp size={18} /></button></div>
+          <div className={styles.composerActions}><span>{state?.busy ? '工作中…' : settings?.name ?? '请先配置模型'}</span>{state?.busy ? <button type="button" aria-label="停止生成" className={styles.send} disabled={stopping} onClick={() => { void stop(); }}><Square size={12} fill="currentColor" /></button> : <button type="submit" aria-label="发送消息" className={styles.send} disabled={!settings || !state || submitting}><ArrowUp size={18} /></button>}</div>
         </form>
         <p className={styles.inputHint}>Enter 发送，Shift + Enter 换行</p>
       </div>

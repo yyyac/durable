@@ -15,6 +15,7 @@ export interface ChatMessage {
   timestamp: number;
   stopReason?: string;
   errorMessage?: string;
+  termination?: 'stopped' | 'interrupted';
 }
 
 export function canRetryReply(failure: ConversationState['failure']) {

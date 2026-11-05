@@ -12,6 +12,8 @@ import { addConversation } from './conversations.js';
 import { canRetryReply } from '../src/types.js';
 
 export const context = BACKGROUND_CONTEXT;
+const STOP_ENTRY_KIND = 'workbench.stop';
+type StoppedAttempt = { taskId: number; timestamp: number | null };
 
 function modelsFor(settings: StoredSettings | null) {
   const models = createModels();
@@ -53,8 +55,12 @@ function displayMessage(id: string, message: Message): ChatMessage | null {
 
 export function stateFrom(view: ConversationView, entries: readonly EntryRecord[]): ConversationState {
   const live = view.docs['pi.live'] as { run?: { taskId: string }; generation?: { message?: Message }; runFailure?: { reason: string; detail?: string } } | undefined;
+  const stopped = entries.filter((entry) => entry.kind === STOP_ENTRY_KIND).map((entry) => entry.data as StoppedAttempt);
   const messages = entries.flatMap((entry) => (entry.model ?? []).flatMap((message, index) => {
     const projected = displayMessage(`${entry.id}:${index}`, message);
+    if (projected?.stopReason === 'aborted') {
+      projected.termination = stopped.some((attempt) => attempt.taskId === entry.byTaskId && (attempt.timestamp === null || attempt.timestamp === message.timestamp)) ? 'stopped' : 'interrupted';
+    }
     return projected ? [projected] : [];
   }));
   return {
@@ -98,6 +104,15 @@ export class Runtime {
     }, context);
     if (id !== null) this.harness.resume();
     return id;
+  }
+  async stop(conversation: Conversation) {
+    await conversation.commit(async (tx) => {
+      const live = await tx.doc(LiveDoc, conversation.id);
+      if (live.run) {
+        await tx.appendEntry(conversation.id, { kind: STOP_ENTRY_KIND, data: { taskId: live.run.taskId, timestamp: live.generation?.message?.timestamp ?? null } });
+      }
+    }, context);
+    await conversation.abort(context);
   }
   async olderEntries(conversation: Conversation, view: ConversationView) {
     const entries: EntryRecord[] = [];

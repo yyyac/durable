@@ -62,7 +62,7 @@ test('不同会话并行生成，离开和返回只切换观察，旧会话更�
   expect(upstream.requests).toHaveLength(2);
   await page.getByRole('button', { name: '正在生成的甲会话', exact: true }).click();
   await expect(page.getByTestId('assistant-message')).toHaveText('甲的开头');
-  await expect(page.getByRole('button', { name: '发送消息' })).toBeDisabled();
+  await expect(page.getByRole('button', { name: '停止生成' })).toBeVisible();
   const duplicate = await page.request.post(`${workbench.url}/api/conversations/${firstId}/messages`, { data: { content: '不能重复发送' } });
   expect(duplicate.status()).toBe(409);
   await page.getByRole('button', { name: '正在生成的乙会话', exact: true }).click();

@@ -27,6 +27,7 @@ export interface ChatMessage {
   content: ContentBlock[];
   timestamp: number;
   stopReason?: string;
+  termination?: 'stopped' | 'interrupted';
 }
 export interface ConversationState {
   id: string;

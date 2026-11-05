@@ -4,7 +4,7 @@ import { openAICompletionsApi } from '@earendil-works/pi-ai/api/openai-completio
 import { openAIResponsesApi } from '@earendil-works/pi-ai/api/openai-responses.lazy';
 import { anthropicMessagesApi } from '@earendil-works/pi-ai/api/anthropic-messages.lazy';
 import type { Message } from '@earendil-works/pi-ai';
-import { createRegistry, Harness, type Conversation, type ConversationView, type EntryRecord, type Cursor, type ConversationId } from '@earendil-works/pi-durable';
+import { createRegistry, Harness, LiveDoc, type Conversation, type ConversationView, type EntryRecord, type Cursor, type ConversationId } from '@earendil-works/pi-durable';
 import { openNodeSqliteStorage } from '@earendil-works/pi-durable/storage/sqlite/node';
 import { join } from 'node:path';
 import type { ChatMessage, ConversationState, ContentBlock, ModelSelection } from '../src/types.js';
@@ -12,6 +12,8 @@ import { SettingsStore, type StoredSettings } from './settings.js';
 import { addConversation } from './conversations.js';
 
 export const context = BACKGROUND_CONTEXT;
+const STOP_ENTRY_KIND = 'workbench.stop';
+type StoppedAttempt = { taskId: number; timestamp: number | null };
 
 function modelsFor(settings: StoredSettings | null) {
   const models = createModels();
@@ -42,8 +44,12 @@ function displayMessage(id: string, message: Message): ChatMessage | null {
 
 export function stateFrom(view: ConversationView, entries: readonly EntryRecord[]): ConversationState {
   const live = view.docs['pi.live'] as { run?: { taskId: string }; generation?: { message?: Message }; runFailure?: { reason: string; detail?: string } } | undefined;
+  const stopped = entries.filter((entry) => entry.kind === STOP_ENTRY_KIND).map((entry) => entry.data as StoppedAttempt);
   const messages = entries.flatMap((entry) => (entry.model ?? []).flatMap((message, index) => {
     const projected = displayMessage(`${entry.id}:${index}`, message);
+    if (projected?.stopReason === 'aborted') {
+      projected.termination = stopped.some((attempt) => attempt.taskId === entry.byTaskId && (attempt.timestamp === null || attempt.timestamp === message.timestamp)) ? 'stopped' : 'interrupted';
+    }
     return projected ? [projected] : [];
   }));
   return {
@@ -78,6 +84,15 @@ export class Runtime {
   async prepare(conversation: Conversation, selection?: ModelSelection) {
     const { service, model } = this.settings.model(selection);
     await conversation.configure({ model: { provider: service.id, modelId: model.modelId }, thinkingLevel: model.supportsThinking ? 'medium' : 'off', tools: [], modelTools: [] }, context);
+  }
+  async stop(conversation: Conversation) {
+    await conversation.commit(async (tx) => {
+      const live = await tx.doc(LiveDoc, conversation.id);
+      if (live.run) {
+        await tx.appendEntry(conversation.id, { kind: STOP_ENTRY_KIND, data: { taskId: live.run.taskId, timestamp: live.generation?.message?.timestamp ?? null } });
+      }
+    }, context);
+    await conversation.abort(context);
   }
   async olderEntries(conversation: Conversation, view: ConversationView) {
     const entries: EntryRecord[] = [];

@@ -12,7 +12,11 @@ npm run build
 npm start
 ```
 
-打开 `http://127.0.0.1:3100`，在左下角“设置”中填写 OpenAI Chat Completions 兼容接口地址、API Key、模型 ID 和名称。接口地址应包含服务要求的前缀，例如 `https://api.example.com/v1`。
+打开 `http://127.0.0.1:3100`，在左下角“设置”中添加模型服务，填写服务名称、接口地址、API Key 和协议。支持 OpenAI Chat Completions、OpenAI Responses、Anthropic Messages；每个服务可添加多个模型，分别填写模型 ID、名称与“支持思考内容”标记。只有接口实际返回可见思考文字时，页面才展示思考区。
+
+OpenAI 接口地址通常包含服务要求的前缀，例如 `https://api.example.com/v1`；Anthropic 使用服务基址，由协议适配器追加 `/v1/messages`。保存后的密钥只显示脱敏值，编辑时留空会保留原密钥。已有单模型配置文件可直接继续使用，下一次保存时转为多服务格式。
+
+在输入框旁打开模型菜单可切换模型。选择只影响后续回复，生成中的请求及已有会话历史保持原样；未配置可用模型时，先到设置中添加模型。
 
 开发时运行 `npm run dev`，访问 Vite 输出的地址。Vite 将 `/api` 请求转发到端口 3100 的后端。正式运行由后端在同一地址提供页面和接口。
 

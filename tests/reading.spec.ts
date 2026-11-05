@@ -1,19 +1,10 @@
 import { test, expect } from './fixtures';
+import { configureModel } from './configure-model';
+const model = { name: '阅读测试模型', apiKey: 'reading-test-key' };
 
-async function configure(page: import('@playwright/test').Page, url: string, thinking = false, protocol = 'openai-completions') {
-  await page.getByRole('button', { name: '打开设置' }).click();
-  await page.getByLabel('接口地址').fill(url);
-  await page.getByLabel('API Key', { exact: true }).fill('reading-test-key');
-  await page.getByLabel('模型 ID').fill('test-model');
-  await page.getByLabel('模型名称').fill('阅读测试模型');
-  await page.getByLabel('接口协议').selectOption(protocol);
-  if (thinking) await page.getByRole('checkbox', { name: '支持思考内容' }).check();
-  await page.getByRole('button', { name: '保存配置' }).click();
-}
-
-test('真实思考默认折叠，展开后持续增长并在完成时保留展开与耗时', async ({ page, workbench, upstream }) => {
+test('真实思考默认折叠，展开后持续增长并在完成时保留展开与耗时', async ({ page, workbench, upstream }, testInfo) => {
   await page.goto(workbench.url);
-  await configure(page, upstream.url, true);
+  await configureModel(page, upstream.url, { ...model, supportsThinking: true });
   upstream.enqueue({ chunks: [{ thinking: '先核实条件。' }, { thinking: '再检查边界。' }, '这是最终正文。'], pauseAfter: 0 });
   await page.getByRole('textbox', { name: '输入消息' }).fill('请说明条件');
   await page.getByRole('button', { name: '发送消息' }).click();
@@ -21,6 +12,7 @@ test('真实思考默认折叠，展开后持续增长并在完成时保留展�
   await expect(thinking).toBeVisible();
   await expect(thinking).toHaveAttribute('aria-expanded', 'false');
   await expect(page.getByText('先核实条件。', { exact: true })).toBeHidden();
+  await page.screenshot({ path: testInfo.outputPath('thinking-generating.png') });
   await thinking.click();
   await expect(page.getByText('先核实条件。', { exact: true })).toBeVisible();
   await expect(thinking).toContainText(/\d+s/);
@@ -38,7 +30,7 @@ test('真实思考默认折叠，展开后持续增长并在完成时保留展�
 test('交错内容保持真实顺序，分段 Markdown 补齐并可分别复制正文和代码', async ({ page, context, workbench, upstream }) => {
   await context.grantPermissions(['clipboard-read', 'clipboard-write']);
   await page.goto(workbench.url);
-  await configure(page, upstream.url.replace(/\/v1$/, ''), true, 'anthropic-messages');
+  await configureModel(page, upstream.url.replace(/\/v1$/, ''), { ...model, supportsThinking: true, protocol: 'anthropic-messages' });
   upstream.enqueue({ chunks: [{ thinking: '第一段思考。' }, '> **引用正文**\n\n- 第一项\n', { thinking: '第二段思考。' }, '```ts\nconst answer =', ' 42;\n```\n\n完成尾段。'], pauseAfter: 3 });
   await page.getByRole('textbox', { name: '输入消息' }).fill('请给出带代码的说明');
   await page.getByRole('button', { name: '发送消息' }).click();
@@ -66,7 +58,7 @@ test('交错内容保持真实顺序，分段 Markdown 补齐并可分别复制�
 
 test('仅有加密删减思考时只显示正文，不展示占位或空思考区域', async ({ page, workbench, upstream }) => {
   await page.goto(workbench.url);
-  await configure(page, upstream.url.replace(/\/v1$/, ''), true, 'anthropic-messages');
+  await configureModel(page, upstream.url.replace(/\/v1$/, ''), { ...model, supportsThinking: true, protocol: 'anthropic-messages' });
   upstream.enqueue({ chunks: [{ redacted: 'opaque-signature-not-visible' }, '只有可见正文。'] });
   await page.getByRole('textbox', { name: '输入消息' }).fill('请简要回答');
   await page.getByRole('button', { name: '发送消息' }).click();
@@ -78,7 +70,7 @@ test('仅有加密删减思考时只显示正文，不展示占位或空思考�
 
 test('跟随回复增长滚动，向上阅读后不会被后续输出拉回底部', async ({ page, workbench, upstream }) => {
   await page.goto(workbench.url);
-  await configure(page, upstream.url);
+  await configureModel(page, upstream.url, model);
   const paragraphs = Array.from({ length: 35 }, (_, index) => `这是第${index + 1}段正文，保留足够长度以检查阅读位置。`).join('\n\n');
   upstream.enqueue({ chunks: [paragraphs, '\n\n后来追加的完整尾段。'], pauseAfter: 0 });
   await page.getByRole('textbox', { name: '输入消息' }).fill('请提供长篇说明');
@@ -91,4 +83,50 @@ test('跟随回复增长滚动，向上阅读后不会被后续输出拉回底�
   await expect(page.getByRole('button', { name: '发送消息' })).toBeEnabled();
   await expect(page.getByText('这是第1段正文，保留足够长度以检查阅读位置。', { exact: true })).toBeInViewport();
   await expect(page.getByText('后来追加的完整尾段。', { exact: true })).not.toBeInViewport();
+});
+
+test('思考计时在刷新和切换后延续，关闭全部页面后结束仍保留冻结耗时', async ({ page, context, workbench, upstream }) => {
+  test.setTimeout(45_000);
+  await page.goto(workbench.url);
+  await configureModel(page, upstream.url, { ...model, supportsThinking: true });
+  upstream.enqueue({ chunks: [{ thinking: '这段思考需要等待。' }, '后台完成的答案。'], pauseAfter: 0 });
+  await page.getByRole('textbox', { name: '输入消息' }).fill('请保留思考耗时');
+  await page.getByRole('button', { name: '发送消息' }).click();
+  const conversationUrl = page.url();
+  const thinking = page.getByRole('button', { name: /思考中/ });
+  await expect(thinking).toContainText(/· [2-9]\d*s/);
+  await page.reload();
+  await expect(thinking).toContainText(/· [2-9]\d*s/);
+  await page.getByRole('button', { name: '新建会话', exact: true }).click();
+  await page.goto(conversationUrl);
+  await expect(thinking).toContainText(/· [2-9]\d*s/);
+  const beforeClose = Number((await thinking.innerText()).match(/· (\d+)s/)![1]);
+  await page.close();
+  upstream.release();
+  await expect.poll(() => upstream.finishedResponses).toBe(1);
+  await new Promise((resolve) => setTimeout(resolve, 3_000));
+  const reopened = await context.newPage();
+  await reopened.goto(conversationUrl);
+  const completed = reopened.getByRole('button', { name: /思考过程/ });
+  await expect(completed).toContainText(/· [2-9]\d*s/);
+  expect(Number((await completed.innerText()).match(/· (\d+)s/)![1])).toBeLessThanOrEqual(beforeClose + 2);
+  await expect(reopened.getByTestId('assistant-message')).toContainText('后台完成的答案。');
+  const label = await completed.textContent();
+  await workbench.stop();
+  await workbench.start();
+  await reopened.reload();
+  await expect(completed).toHaveText(label!);
+});
+
+test('快于实时节流窗口完成的思考块仍有冻结的观察耗时，刷新后保留', async ({ page, workbench, upstream }) => {
+  await page.goto(workbench.url);
+  await configureModel(page, upstream.url.replace(/\/v1$/, ''), { ...model, supportsThinking: true, protocol: 'anthropic-messages' });
+  upstream.enqueue({ chunks: [{ thinking: '瞬间完成的可见思考。' }, '即时答案。'], delayMs: 0 });
+  await page.getByRole('textbox', { name: '输入消息' }).fill('简短回答即可');
+  await page.getByRole('button', { name: '发送消息' }).click();
+  await expect(page.getByRole('button', { name: '发送消息' })).toBeEnabled();
+  const thinking = page.getByRole('button', { name: /思考过程/ });
+  await expect(thinking).toContainText('· 0s');
+  await page.reload();
+  await expect(thinking).toContainText('· 0s');
 });

@@ -2,7 +2,7 @@
 
 ## 当前阶段
 
-规格已完成并发布。产品范围、技术栈、存储、失败处理与主测试边界已由用户确认，原型阶段已取消。已通过 to-spec 发布为 [GitHub Issue #1](https://github.com/yyyac/durable/issues/1)，标签为 `ready-for-agent`；已核验远端正文与本地规格一致。本次未启动应用开发。
+首版正式应用已按 [GitHub Issue #1](https://github.com/yyyac/durable/issues/1) 实施，九张子票据已合入集成分支 `feat/agent-workbench-v1`。工作台具备真实流式回复、思考与 Markdown 阅读、多会话管理、多服务三协议配置、主动停止、失败重试及重启恢复。原型阶段已取消，运行与检查方式见仓库根目录的 README。
 
 完整规格见 [个人 Agent 工作台首版规格](../specs/personal-agent-workbench-v1.md)。
 
@@ -30,11 +30,11 @@
 - 会话与任务由 pi-durable 存入 SQLite。模型配置和 API Key 由后端保存在本机配置文件中，Key 明文存储；该文件不进入 Git，设置页保存后仅展示脱敏值。
 - 后台最终判定回复失败后，保留已显示内容、标注失败原因，并提供手动重试。网页连接断开时自动重连并同步状态，不重新提交问题。
 
-## 执行门槛
+## 实施状态
 
-- 规格整理与发布已完成，本次未启动应用开发。
+- 规格整理、发布与正式应用实现均已完成，应用代码位于 `src/` 与 `server/`。
 - 主测试边界已确认：通过整个 Web 工作台的外部行为驱动真实前后端、pi-durable 和 SQLite，仅将上游模型服务替换为可控的流式测试服务。
-- 正式规格已发布为 GitHub Issue #1，带有 `ready-for-agent` 标签。
+- 实施票据 #2 至 #10 已合入集成分支；行为验收由 `tests/` 中的浏览器测试覆盖。
 - 原型已取消，不再作为正式实现的前置步骤。
 
 ## 已确认技术方案
@@ -48,13 +48,13 @@
 | 模型配置与凭据 | 后端本机配置文件 | 模型配置与 API Key 明文保存，排除于 Git；前端保存后只接收脱敏摘要。 |
 | 前后端通信 | REST + SSE | REST 发命令，SSE 观察状态；连接断开不停止生成，重连获取当前快照。 |
 
-兼容性依据：[React 官方](https://react.dev/learn/build-a-react-app-from-scratch)、[Vite 官方](https://vite.dev/guide/)、[Hono Node 适配](https://hono.dev/docs/getting-started/nodejs)、[Hono SSE](https://hono.dev/docs/helpers/streaming)、[CSS Modules](https://vite.dev/guide/features#css-modules)、[Radix](https://www.radix-ui.com/primitives/docs/overview/introduction)、[Lucide](https://lucide.dev/guide/react/getting-started)。技术方案确认不代表开工授权。
+兼容性依据：[React 官方](https://react.dev/learn/build-a-react-app-from-scratch)、[Vite 官方](https://vite.dev/guide/)、[Hono Node 适配](https://hono.dev/docs/getting-started/nodejs)、[Hono SSE](https://hono.dev/docs/helpers/streaming)、[CSS Modules](https://vite.dev/guide/features#css-modules)、[Radix](https://www.radix-ui.com/primitives/docs/overview/introduction)、[Lucide](https://lucide.dev/guide/react/getting-started)。经验证的依赖版本固定在 `package.json` 与 `package-lock.json`，运行环境为 Node 24。
 
 ## 正式实现与验收
 
 直接实现正式应用并接入真实 Agent。自动化测试可使用可控的上游模型测试服务驱动流式状态，工作台本身使用真实前后端与 pi-durable 持久化；不新增面向用户的模拟演示模式。
 
-后端持久化、任务恢复、真实模型接口与页面视觉均纳入正式功能验收。规格发布已完成，应用开发尚未开始。
+后端持久化、任务恢复、真实协议交互与页面视觉均纳入正式功能验收。浏览器测试使用隔离 SQLite 和可控上游，并通过真实进程终止与重启验证恢复。
 
 两轮纯聊天的观察已完成，见 [参考站流式展示记录](../research/reference-chat-streaming.md)。用户已确认按原站复刻思考默认折叠的交互。
 
@@ -74,8 +74,10 @@
 
 ## 已核实的实现事实
 
-- 仓库尚无前后端应用实现。
+- 仓库已包含 React 前端、Hono 常驻后端、真实 pi-durable 与 SQLite，以及覆盖规格主要行为的浏览器测试。
 - pi-durable 可通过 `conversation.watch()` 提供历史记录与包含思考、正文的部分生成状态；最终答案由运行时自动追加。
 - 可见思考依赖模型接口是否返回对应内容，不能从 token 计数或加密签名还原。
+- 模型配置与命令准入在同一运行时事务中完成；停止针对捕获的任务标识，避免并发命令影响另一轮回复。
+- 思考计时作为独立显示元数据由后端观察并保存，和网页订阅生命周期分离；消息内容仍以运行时记录为唯一来源。
 
 调研依据见 [pi 组件研究](../research/pi-packages.md)。

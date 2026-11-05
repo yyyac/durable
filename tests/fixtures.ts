@@ -7,19 +7,21 @@ import { spawn, type ChildProcess } from 'node:child_process';
 import { once } from 'node:events';
 import { fileURLToPath } from 'node:url';
 
-type Plan = { chunks: Array<string | { thinking: string } | { redacted: string }>; pauseAfter?: number; failure?: { status: number; message: string }; streamError?: string };
+type Plan = { chunks: Array<string | { thinking: string } | { redacted: string }>; pauseAfter?: number; delayMs?: number; failure?: { status: number; message: string }; streamError?: string };
 type UpstreamRequest = { model: string; messages: Array<{ role: string; content: unknown }>; reasoning_effort?: string };
 
 export class Upstream {
   readonly requests: UpstreamRequest[] = [];
   readonly plans: Plan[] = [];
   abortedResponses = 0;
+  finishedResponses = 0;
   private releases: Array<() => void> = [];
   readonly server = createServer(async (req, res) => {
     let body = '';
     for await (const chunk of req) body += chunk;
     this.requests.push(JSON.parse(body));
     res.on('close', () => { if (!res.writableEnded) this.abortedResponses++; });
+    res.on('finish', () => { this.finishedResponses++; });
     const plan = this.plans.shift() ?? { chunks: ['测试回复'] };
     if (plan.failure) {
       res.writeHead(plan.failure.status, { 'content-type': 'application/json' });
@@ -35,7 +37,7 @@ export class Upstream {
     for (const [index, block] of plan.chunks.entries()) {
       this.chunk(res, typeof block === 'string' ? { content: block } : 'thinking' in block ? { reasoning_content: block.thinking } : { reasoning_details: [{ type: 'reasoning.encrypted', data: block.redacted }] });
       if (plan.pauseAfter === index) await new Promise<void>((resolve) => this.releases.push(resolve));
-      await new Promise((resolve) => setTimeout(resolve, 150));
+      await new Promise((resolve) => setTimeout(resolve, plan.delayMs ?? 150));
     }
     res.write(`data: ${JSON.stringify({ id: 'chat-test', object: 'chat.completion.chunk', created: 1, model: 'test-model', choices: [{ index: 0, delta: {}, finish_reason: 'stop' }] })}\n\n`);
     res.end('data: [DONE]\n\n');
@@ -59,7 +61,7 @@ export class Upstream {
       if (typeof block === 'string') event('content_block_delta', { index: blockIndex, delta: { type: 'text_delta', text: block } });
       else if ('thinking' in block) event('content_block_delta', { index: blockIndex, delta: { type: 'thinking_delta', thinking: block.thinking } });
       if (plan.pauseAfter === index) await new Promise<void>((resolve) => this.releases.push(resolve));
-      await new Promise((resolve) => setTimeout(resolve, 150));
+      await new Promise((resolve) => setTimeout(resolve, plan.delayMs ?? 150));
     }
     if (blockIndex >= 0) event('content_block_stop', { index: blockIndex });
     if (plan.streamError) {
@@ -93,7 +95,7 @@ export class Workbench {
     });
     this.process.stdout?.on('data', (value) => { this.output += String(value); });
     this.process.stderr?.on('data', (value) => { this.output += String(value); });
-    this.process.on('exit', (code) => { if (code) console.error(this.output); });
+    this.process.on('exit', (code) => { if (code) console.error(`工作台进程退出（${code}）\n${this.output}`); });
     for (let count = 0; count < 100; count++) {
       try { if ((await fetch(`${this.url}/api/health`)).ok) return; } catch {}
       if (this.process.exitCode !== null) throw new Error(this.output);

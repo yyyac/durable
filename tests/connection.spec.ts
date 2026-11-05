@@ -1,16 +1,8 @@
 import { createServer, request, type ServerResponse, type ClientRequest } from 'node:http';
 import { once } from 'node:events';
-import type { Page } from '@playwright/test';
 import { test, expect } from './fixtures';
-
-async function configure(page: Page, upstreamUrl: string) {
-  await page.getByRole('button', { name: '打开设置' }).click();
-  await page.getByLabel('接口地址').fill(upstreamUrl);
-  await page.getByLabel('API Key', { exact: true }).fill('connection-test-key');
-  await page.getByLabel('模型 ID').fill('test-model');
-  await page.getByLabel('模型名称').fill('连接测试模型');
-  await page.getByRole('button', { name: '保存配置' }).click();
-}
+import { configureModel } from './configure-model';
+const model = { name: '连接测试模型', apiKey: 'connection-test-key' };
 
 class ConnectionProxy {
   private available = true;
@@ -48,7 +40,7 @@ test('订阅中断自动接续后台生成，不重发输入或误报模型失�
   await proxy.start();
   try {
     await page.goto(proxy.url);
-    await configure(page, upstream.url);
+    await configureModel(page, upstream.url, model);
     upstream.enqueue({ chunks: ['断线前内容', '，断线期间的完整尾段。'], pauseAfter: 0 });
     const responseFinished = new Promise<void>((resolve) => {
       upstream.server.once('request', (_request, response) => response.once('finish', resolve));
@@ -74,7 +66,7 @@ test('订阅中断自动接续后台生成，不重发输入或误报模型失�
 
 test('正文生成中刷新先恢复当前内容，再接续同一任务的尾段', async ({ page, workbench, upstream }) => {
   await page.goto(workbench.url);
-  await configure(page, upstream.url);
+  await configureModel(page, upstream.url, model);
   upstream.enqueue({ chunks: ['刷新前已生成', '，刷新后接续的尾段。'], pauseAfter: 0 });
   await page.getByRole('textbox', { name: '输入消息' }).fill('刷新测试问题');
   await page.getByRole('button', { name: '发送消息' }).click();
@@ -91,7 +83,7 @@ test('正文生成中刷新先恢复当前内容，再接续同一任务的尾�
 
 test('关闭网页后后台完成回复，重新打开只读取已有最终答案', async ({ page, context, workbench, upstream }) => {
   await page.goto(workbench.url);
-  await configure(page, upstream.url);
+  await configureModel(page, upstream.url, model);
   upstream.enqueue({ chunks: ['关闭前的正文', '，无人订阅时完成的答案。'], pauseAfter: 0 });
   const responseFinished = new Promise<void>((resolve) => {
     upstream.server.once('request', (_request, response) => response.once('finish', resolve));

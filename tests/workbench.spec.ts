@@ -1,13 +1,5 @@
 import { test, expect } from './fixtures';
-
-async function configure(page: import('@playwright/test').Page, url: string) {
-  await page.getByRole('button', { name: '打开设置' }).click();
-  await page.getByLabel('接口地址').fill(url);
-  await page.getByLabel('API Key', { exact: true }).fill('test-secret-do-not-echo');
-  await page.getByLabel('模型 ID').fill('test-model');
-  await page.getByLabel('模型名称').fill('本地测试模型');
-  await page.getByRole('button', { name: '保存配置' }).click();
-}
+import { configureModel } from './configure-model';
 
 test('未配置模型时可以从设置入口开始配置', async ({ page, workbench }) => {
   await page.goto(workbench.url);
@@ -20,7 +12,7 @@ test('未配置模型时可以从设置入口开始配置', async ({ page, workb
 
 test('真实回复逐段显示，结束补齐尾段且可以携带有效上下文继续提问', async ({ page, workbench, upstream }) => {
   await page.goto(workbench.url);
-  await configure(page, upstream.url);
+  await configureModel(page, upstream.url);
   upstream.enqueue({ chunks: ['第一段内容', '，完整尾段。'], pauseAfter: 0 });
   await page.getByRole('textbox', { name: '输入消息' }).fill('你好，请介绍自己');
   await page.getByRole('button', { name: '发送消息' }).click();

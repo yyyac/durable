@@ -1,30 +1,23 @@
 import { test, expect } from './fixtures';
+import { configureModel } from './configure-model';
+const model = { name: '停止测试模型', apiKey: 'stopping-test-key', protocol: 'anthropic-messages' as const, supportsThinking: true };
 
-async function configure(page: import('@playwright/test').Page, url: string) {
-  await page.getByRole('button', { name: '打开设置' }).click();
-  await page.getByLabel('接口地址').fill(url.replace(/\/v1$/, ''));
-  await page.getByLabel('API Key', { exact: true }).fill('stopping-test-key');
-  await page.getByLabel('模型 ID').fill('test-model');
-  await page.getByLabel('模型名称').fill('停止测试模型');
-  await page.getByLabel('接口协议').selectOption('anthropic-messages');
-  await page.getByRole('checkbox', { name: '支持思考内容' }).check();
-  await page.getByRole('button', { name: '保存配置' }).click();
-}
-
-test('正文阶段主动停止保留已发布内容，取消上游且停止片段不进入下一轮上下文', async ({ page, workbench, upstream }) => {
+test('正文阶段主动停止保留已发布内容，取消上游且停止片段不进入下一轮上下文', async ({ page, workbench, upstream }, testInfo) => {
   await page.goto(workbench.url);
-  await configure(page, upstream.url);
+  await configureModel(page, upstream.url.replace(/\/v1$/, ''), model);
   upstream.enqueue({ chunks: [{ thinking: '已经完成的思考。' }, '已经发布的部分正文。', '停止后不应发布的尾段。'], pauseAfter: 1 });
   await page.getByRole('textbox', { name: '输入消息' }).fill('先回答这一题');
   await page.getByRole('button', { name: '发送消息' }).click();
   await expect(page.getByText('已经发布的部分正文。', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: /思考过程/ }).click();
+  await page.screenshot({ path: testInfo.outputPath('body-generating.png') });
   await page.getByRole('button', { name: '停止生成' }).click();
   await expect(page.getByText('已停止', { exact: true })).toHaveCount(1);
   await expect(page.getByTestId('assistant-message')).toHaveCount(1);
   await expect(page.getByText('已经完成的思考。', { exact: true })).toBeVisible();
   await expect(page.getByText('已经发布的部分正文。', { exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: '发送消息' })).toBeEnabled();
+  await page.screenshot({ path: testInfo.outputPath('stopped.png') });
   await expect.poll(() => upstream.abortedResponses).toBe(1);
   upstream.release();
   await expect(page.getByText('停止后不应发布的尾段。', { exact: true })).toHaveCount(0);
@@ -47,7 +40,7 @@ test('正文阶段主动停止保留已发布内容，取消上游且停止片�
 
 test('思考阶段主动停止后保留展开的部分思考并结束计时，不再追加正文', async ({ page, workbench, upstream }) => {
   await page.goto(workbench.url);
-  await configure(page, upstream.url);
+  await configureModel(page, upstream.url.replace(/\/v1$/, ''), model);
   upstream.enqueue({ chunks: [{ thinking: '仍在进行的思考。' }, { thinking: '停止后不能出现的思考。' }, '停止后不能出现的正文。'], pauseAfter: 0 });
   await page.getByRole('textbox', { name: '输入消息' }).fill('请先思考');
   await page.getByRole('button', { name: '发送消息' }).click();

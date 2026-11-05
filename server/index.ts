@@ -44,10 +44,9 @@ app.post('/api/conversations/:id/messages', async (c) => {
     const input = await c.req.json();
     if (typeof input.content !== 'string' || !input.content.trim()) return c.json({ error: '请输入消息' }, 400);
     const conversation = await runtime.conversation(c.req.param('id'));
-    await runtime.prepare(conversation, input.modelSelection);
-    const submission = await conversation.submit({ type: 'input', content: input.content.trim(), whenBusy: 'reject' }, context);
+    const id = await runtime.send(conversation, input.content.trim(), input.modelSelection);
     await titleConversation(runtime.harness, conversation.id, input.content);
-    return c.json({ id: submission.id }, 202);
+    return c.json({ id }, 202);
   } catch (error) {
     return c.json({ error: error instanceof ConversationBusy ? '当前会话正在生成，请等待完成' : (error as Error).message }, error instanceof ConversationBusy ? 409 : 400);
   }
@@ -57,8 +56,7 @@ app.post('/api/conversations/:id/retry', async (c) => {
     const body = await c.req.text();
     const input = body ? JSON.parse(body) : {};
     const conversation = await runtime.conversation(c.req.param('id'));
-    await runtime.prepare(conversation, input.modelSelection);
-    const id = await runtime.retry(conversation);
+    const id = await runtime.retry(conversation, input.modelSelection);
     return id === null ? c.json({ error: '当前回复无法重试' }, 409) : c.json({ id }, 202);
   } catch (error) {
     return c.json({ error: (error as Error).message }, 400);
@@ -79,7 +77,7 @@ app.get('/api/conversations/:id/events', async (c) => {
       const entries = new Map((await runtime.olderEntries(conversation, watch.value)).map((entry) => [entry.id, entry]));
       const publish = async (view: typeof watch.value) => {
         for (const entry of view.entries) entries.set(entry.id, entry);
-        await stream.writeSSE({ event: 'state', data: JSON.stringify(stateFrom(view, [...entries.values()])) });
+        await stream.writeSSE({ event: 'state', data: JSON.stringify(stateFrom(view, [...entries.values()], await runtime.thinking.read(conversation.id))) });
       };
       await publish(watch.value);
       watch.start(async (call) => { if (call.kind === 'value') await publish(call.value); });

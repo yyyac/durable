@@ -1,21 +1,10 @@
 import { test, expect } from './fixtures';
-
-async function configure(page: import('@playwright/test').Page, url: string, thinking = false) {
-  await page.getByRole('button', { name: '打开设置' }).click();
-  await page.getByLabel('接口地址').fill(url);
-  await page.getByLabel('API Key', { exact: true }).fill('failure-test-secret');
-  await page.getByLabel('模型 ID').fill('test-model');
-  await page.getByLabel('模型名称').fill('失败测试模型');
-  if (thinking) {
-    await page.getByLabel('接口协议').selectOption('anthropic-messages');
-    await page.getByLabel('支持思考内容').check();
-  }
-  await page.getByRole('button', { name: '保存配置' }).click();
-}
+import { configureModel } from './configure-model';
+const model = { name: '失败测试模型', apiKey: 'failure-test-secret' };
 
 test('请求失败可阅读原因，手动重试不重复问题或启动重叠生成', async ({ page, workbench, upstream }, testInfo) => {
   await page.goto(workbench.url);
-  await configure(page, upstream.url);
+  await configureModel(page, upstream.url, model);
   upstream.enqueue({ chunks: [], failure: { status: 401, message: '请求凭据无效，请检查模型服务' } });
   await page.getByRole('textbox', { name: '输入消息' }).fill('请回答原来的问题');
   await page.getByRole('button', { name: '发送消息' }).click();
@@ -48,7 +37,7 @@ test('请求失败可阅读原因，手动重试不重复问题或启动重叠�
 
 test('中途流失败保留已展开思考和部分正文，恢复上游后手动重试成功', async ({ page, workbench, upstream }, testInfo) => {
   await page.goto(workbench.url);
-  await configure(page, upstream.url, true);
+  await configureModel(page, upstream.url, { ...model, supportsThinking: true, protocol: 'anthropic-messages' });
   upstream.enqueue({ chunks: [{ thinking: '已经产生的可见思考' }, '未完成的正文'], pauseAfter: 1, streamError: '输出被上游拒绝' });
   await page.getByRole('textbox', { name: '输入消息' }).fill('这次先思考再回答');
   await page.getByRole('button', { name: '发送消息' }).click();

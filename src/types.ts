@@ -20,7 +20,8 @@ export function selectedModel(settings: ModelSettings | null) {
   return service && model ? { service, model } : null;
 }
 
-export type ContentBlock = { type: 'text'; text: string } | { type: 'thinking'; thinking: string };
+export type ThinkingTiming = { startedAt: number; endedAt?: number };
+export type ContentBlock = { type: 'text'; text: string } | { type: 'thinking'; thinking: string; timing?: ThinkingTiming };
 export interface ChatMessage {
   id: string;
   role: 'user' | 'assistant';

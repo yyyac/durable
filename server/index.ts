@@ -38,6 +38,12 @@ app.post('/api/conversations/:id/messages', async (c) => {
     return c.json({ error: error instanceof ConversationBusy ? '当前会话正在生成，请等待完成' : (error as Error).message }, error instanceof ConversationBusy ? 409 : 400);
   }
 });
+app.post('/api/conversations/:id/stop', async (c) => {
+  try {
+    await runtime.stop(await runtime.conversation(c.req.param('id')));
+    return c.json({ ok: true });
+  } catch (error) { return c.json({ error: (error as Error).message }, 400); }
+});
 app.get('/api/conversations/:id/events', async (c) => {
   const conversation = await runtime.conversation(c.req.param('id'));
   return streamSSE(c, async (stream) => {

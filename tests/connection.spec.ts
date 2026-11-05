@@ -81,7 +81,7 @@ test('正文生成中刷新先恢复当前内容，再接续同一任务的尾�
   await expect(page.getByTestId('assistant-message')).toHaveText('刷新前已生成');
   await page.reload();
   await expect(page.getByTestId('assistant-message')).toHaveText('刷新前已生成');
-  await expect(page.getByRole('button', { name: '发送消息' })).toBeDisabled();
+  await expect(page.getByRole('button', { name: '停止生成' })).toBeVisible();
   upstream.release();
   await expect(page.getByTestId('assistant-message')).toHaveText('刷新前已生成，刷新后接续的尾段。');
   await expect(page.getByTestId('assistant-message')).toHaveCount(1);

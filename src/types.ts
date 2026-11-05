@@ -3,6 +3,8 @@ export interface ModelSettings {
   modelId: string;
   name: string;
   apiKeyMasked: string;
+  supportsThinking?: boolean;
+  protocol?: 'openai-completions' | 'anthropic-messages';
 }
 
 export type ContentBlock = { type: 'text'; text: string } | { type: 'thinking'; thinking: string };

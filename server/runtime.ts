@@ -1,6 +1,7 @@
 import { BACKGROUND_CONTEXT } from '@earendil-works/chord/context';
 import { createModels, createProvider } from '@earendil-works/pi-ai/models';
 import { openAICompletionsApi } from '@earendil-works/pi-ai/api/openai-completions.lazy';
+import { anthropicMessagesApi } from '@earendil-works/pi-ai/api/anthropic-messages.lazy';
 import type { Message } from '@earendil-works/pi-ai';
 import { createRegistry, Harness, type Conversation, type ConversationView, type EntryRecord, type Cursor, type ConversationId } from '@earendil-works/pi-durable';
 import { openNodeSqliteStorage } from '@earendil-works/pi-durable/storage/sqlite/node';
@@ -19,11 +20,11 @@ function modelsFor(settings: StoredSettings | null) {
     baseUrl: settings.baseUrl,
     auth: { apiKey: { name: 'API Key', resolve: async () => ({ auth: { apiKey: settings.apiKey } }) } },
     models: [{
-      id: settings.modelId, name: settings.name, provider: 'configured', api: 'openai-completions',
-      baseUrl: settings.baseUrl, reasoning: false, input: ['text'],
+      id: settings.modelId, name: settings.name, provider: 'configured', api: settings.protocol ?? 'openai-completions',
+      baseUrl: settings.baseUrl, reasoning: settings.supportsThinking ?? false, input: ['text'],
       cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }, contextWindow: 131072, maxTokens: 16384,
     }],
-    api: openAICompletionsApi(),
+    api: settings.protocol === 'anthropic-messages' ? anthropicMessagesApi() : openAICompletionsApi(),
   }));
   return models;
 }
@@ -32,7 +33,7 @@ function displayMessage(id: string, message: Message): ChatMessage | null {
   if (message.role !== 'user' && message.role !== 'assistant') return null;
   const content: ContentBlock[] = typeof message.content === 'string' ? [{ type: 'text', text: message.content }] : message.content.flatMap((block): ContentBlock[] => {
     if (block.type === 'text') return [{ type: 'text', text: block.text }];
-    if (block.type === 'thinking' && block.thinking) return [{ type: 'thinking', thinking: block.thinking }];
+    if (block.type === 'thinking' && block.thinking && !block.redacted) return [{ type: 'thinking', thinking: block.thinking }];
     return [];
   });
   return { id, role: message.role, content, timestamp: message.timestamp, ...(message.role === 'assistant' ? { stopReason: message.stopReason } : {}) };
@@ -74,7 +75,7 @@ export class Runtime {
   }
   async prepare(conversation: Conversation) {
     if (!this.settings.value) throw new Error('尚未配置模型');
-    await conversation.configure({ model: { provider: 'configured', modelId: this.settings.value.modelId }, tools: [], modelTools: [] }, context);
+    await conversation.configure({ model: { provider: 'configured', modelId: this.settings.value.modelId }, thinkingLevel: this.settings.value.supportsThinking ? 'medium' : 'off', tools: [], modelTools: [] }, context);
   }
   async olderEntries(conversation: Conversation, view: ConversationView) {
     const entries: EntryRecord[] = [];

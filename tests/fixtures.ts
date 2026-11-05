@@ -13,11 +13,13 @@ type UpstreamRequest = { model: string; messages: Array<{ role: string; content:
 export class Upstream {
   readonly requests: UpstreamRequest[] = [];
   readonly plans: Plan[] = [];
+  abortedResponses = 0;
   private releases: Array<() => void> = [];
   readonly server = createServer(async (req, res) => {
     let body = '';
     for await (const chunk of req) body += chunk;
     this.requests.push(JSON.parse(body));
+    res.on('close', () => { if (!res.writableEnded) this.abortedResponses++; });
     const plan = this.plans.shift() ?? { chunks: ['测试回复'] };
     res.writeHead(200, { 'content-type': 'text/event-stream' });
     if (new URL(req.url ?? '/', 'http://localhost').pathname.endsWith('/messages')) {

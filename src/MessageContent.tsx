@@ -55,6 +55,6 @@ export function MessageContent({ message, streaming }: { message: ChatMessage; s
       ? <ThinkingBlock key={index} text={block.thinking} active={streaming && index === message.content.length - 1} />
       : message.role === 'assistant' ? <div key={index} className={styles.markdown}><Markdown components={{ pre: CodeBlock }}>{block.text}</Markdown></div> : <div key={index}>{block.text}</div>)}
   </div>
-  <div className={styles.footer}><time>{new Date(message.timestamp).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}</time>{message.role === 'assistant' && body && <CopyButton label="复制正文" text={() => body} />}</div>
+  <div className={styles.footer}><time>{new Date(message.timestamp).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}</time>{message.termination && <span>{message.termination === 'stopped' ? '已停止' : '已中断'}</span>}{message.role === 'assistant' && body && <CopyButton label="复制正文" text={() => body} />}</div>
   </>;
 }

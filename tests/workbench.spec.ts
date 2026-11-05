@@ -25,7 +25,7 @@ test('真实回复逐段显示，结束补齐尾段且可以携带有效上下�
   await page.getByRole('textbox', { name: '输入消息' }).fill('你好，请介绍自己');
   await page.getByRole('button', { name: '发送消息' }).click();
   await expect(page.getByTestId('assistant-message')).toHaveText('第一段内容');
-  await expect(page.getByRole('button', { name: '发送消息' })).toBeDisabled();
+  await expect(page.getByRole('button', { name: '停止生成' })).toBeVisible();
   await expect(page.getByText('思考过程')).toHaveCount(0);
   const conversation = await (await page.request.get(`${workbench.url}/api/conversation`)).json();
   const duplicate = await page.request.post(`${workbench.url}/api/conversations/${conversation.id}/messages`, { data: { content: '不应排队' } });

@@ -20,3 +20,9 @@ export interface ConversationState {
   busy: boolean;
   failure?: { reason: string; detail?: string };
 }
+
+export type ConversationSummary = {
+  id: string;
+  title: string;
+  createdAt: number;
+};

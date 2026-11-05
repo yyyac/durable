@@ -1,47 +1,48 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { ArrowUp } from 'lucide-react';
 import { SettingsDialog } from './SettingsDialog';
+import { Sidebar } from './Sidebar';
+import { useConversations } from './useConversations';
 import { useConversation } from './useConversation';
 import type { ModelSettings } from './types';
 import styles from './App.module.css';
 
 export function App() {
   const [settings, setSettings] = useState<ModelSettings | null>(null);
-  const [conversationId, setConversationId] = useState<string | null>(null);
-  const { state, connection } = useConversation(conversationId);
   const [input, setInput] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
+  const { conversations, selectedId, select, create, creating, refresh, error: listError } = useConversations();
+  const { state, connection } = useConversation(selectedId);
+  const currentId = useRef(selectedId);
+  currentId.current = selectedId;
   useEffect(() => { void fetch('/api/settings').then((response) => response.json()).then(setSettings); }, []);
   useEffect(() => {
-    let active = true;
-    void fetch('/api/conversation').then((response) => response.json()).then(({ id }) => {
-      if (active) setConversationId(id);
-    }).catch((error: Error) => { if (active) setError(error.message); });
-    return () => { active = false; };
-  }, []);
+    setInput('');
+    setError('');
+    setSubmitting(false);
+  }, [selectedId]);
   async function send(event: FormEvent) {
     event.preventDefault();
     if (!state || !settings || state.busy || submitting || !input.trim()) return;
     setSubmitting(true);
     setError('');
+    const sendingId = state.id;
     try {
       const response = await fetch(`/api/conversations/${state.id}/messages`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ content: input }) });
       if (!response.ok) throw new Error((await response.json()).error);
-      setInput('');
-    } catch (error) { setError((error as Error).message); }
-    finally { setSubmitting(false); }
+      if (currentId.current === sendingId) setInput('');
+      await refresh();
+    } catch (error) { if (currentId.current === sendingId) setError((error as Error).message); }
+    finally { if (currentId.current === sendingId) setSubmitting(false); }
   }
   const messages = [...(state?.messages ?? []), ...(state?.generation ? [state.generation] : [])];
   return <div className={styles.workbench}>
-    <aside className={styles.sidebar}>
-      <h1><span className={styles.logo}>Ⅱ</span>个人 Agent 工作台</h1>
-      <p className={styles.sectionLabel}>会话</p>
-      <div className={styles.selected}>新会话</div>
+    <Sidebar conversations={conversations} selectedId={selectedId} onSelect={select} onCreate={() => { void create(); }} creating={creating || !selectedId}>
       <SettingsDialog settings={settings} onSaved={setSettings} />
-    </aside>
+    </Sidebar>
     <main className={styles.main}>
-      <header className={styles.header}>新会话</header>
+      <header className={styles.header}>{conversations.find((conversation) => conversation.id === selectedId)?.title ?? '新会话'}</header>
       <div className={styles.messages}>
         {messages.length ? <div className={styles.transcript}>{messages.map((message) => <article key={message.id} className={message.role === 'user' ? styles.userMessage : styles.assistantMessage}>
           <div data-testid={message.role === 'assistant' ? 'assistant-message' : 'user-message'}>{message.content.map((block) => block.type === 'text' ? block.text : '').join('')}</div>
@@ -50,9 +51,9 @@ export function App() {
       </div>
       <div className={styles.composerArea}>
         {connection === 'reconnecting' && <p role="status" className={styles.connection}>连接已断开，正在重连…</p>}
-        {error && <p role="alert" className={styles.error}>{error}</p>}
+        {(error || listError) && <p role="alert" className={styles.error}>{error || listError}</p>}
         <form className={styles.composer} onSubmit={send}>
-          <textarea aria-label="输入消息" placeholder="输入消息…" value={input} onChange={(event) => setInput(event.target.value)} disabled={!settings || state?.busy || submitting} onKeyDown={(event) => {
+          <textarea aria-label="输入消息" placeholder="输入消息…" value={input} onChange={(event) => setInput(event.target.value)} disabled={!settings || !state || state.busy || submitting} onKeyDown={(event) => {
             if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); }
           }} />
           <div className={styles.composerActions}><span>{state?.busy ? '工作中…' : settings?.name ?? '请先配置模型'}</span><button type="submit" aria-label="发送消息" className={styles.send} disabled={!settings || !state || state.busy || submitting}><ArrowUp size={18} /></button></div>

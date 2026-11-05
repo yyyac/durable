@@ -1,25 +1,24 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { ArrowUp } from 'lucide-react';
 import { SettingsDialog } from './SettingsDialog';
-import type { ModelSettings, ConversationState } from './types';
+import { useConversation } from './useConversation';
+import type { ModelSettings } from './types';
 import styles from './App.module.css';
 
 export function App() {
   const [settings, setSettings] = useState<ModelSettings | null>(null);
-  const [state, setState] = useState<ConversationState | null>(null);
+  const [conversationId, setConversationId] = useState<string | null>(null);
+  const { state, connection } = useConversation(conversationId);
   const [input, setInput] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
   useEffect(() => { void fetch('/api/settings').then((response) => response.json()).then(setSettings); }, []);
   useEffect(() => {
-    let stream: EventSource | undefined;
     let active = true;
     void fetch('/api/conversation').then((response) => response.json()).then(({ id }) => {
-      if (!active) return;
-      stream = new EventSource(`/api/conversations/${id}/events`);
-      stream.addEventListener('state', (event) => { if (active) setState(JSON.parse(event.data)); });
+      if (active) setConversationId(id);
     }).catch((error: Error) => { if (active) setError(error.message); });
-    return () => { active = false; stream?.close(); };
+    return () => { active = false; };
   }, []);
   async function send(event: FormEvent) {
     event.preventDefault();
@@ -50,6 +49,7 @@ export function App() {
         </article>)}</div> : <div className={styles.empty}><h2>开始一次对话</h2>{settings ? <p>{settings.name}</p> : <><p>尚未配置模型</p><p>请先在设置中添加模型服务。</p></>}</div>}
       </div>
       <div className={styles.composerArea}>
+        {connection === 'reconnecting' && <p role="status" className={styles.connection}>连接已断开，正在重连…</p>}
         {error && <p role="alert" className={styles.error}>{error}</p>}
         <form className={styles.composer} onSubmit={send}>
           <textarea aria-label="输入消息" placeholder="输入消息…" value={input} onChange={(event) => setInput(event.target.value)} disabled={!settings || state?.busy || submitting} onKeyDown={(event) => {

@@ -38,7 +38,7 @@ export function App() {
   }
   const messages = [...(state?.messages ?? []), ...(state?.generation ? [state.generation] : [])];
   return <div className={styles.workbench}>
-    <Sidebar conversations={conversations} selectedId={selectedId} onSelect={select} onCreate={() => { void create(); }} creating={creating}>
+    <Sidebar conversations={conversations} selectedId={selectedId} onSelect={select} onCreate={() => { void create(); }} creating={creating || !selectedId}>
       <SettingsDialog settings={settings} onSaved={setSettings} />
     </Sidebar>
     <main className={styles.main}>
@@ -53,7 +53,7 @@ export function App() {
         {connection === 'reconnecting' && <p role="status" className={styles.connection}>连接已断开，正在重连…</p>}
         {(error || listError) && <p role="alert" className={styles.error}>{error || listError}</p>}
         <form className={styles.composer} onSubmit={send}>
-          <textarea aria-label="输入消息" placeholder="输入消息…" value={input} onChange={(event) => setInput(event.target.value)} disabled={!settings || state?.busy || submitting} onKeyDown={(event) => {
+          <textarea aria-label="输入消息" placeholder="输入消息…" value={input} onChange={(event) => setInput(event.target.value)} disabled={!settings || !state || state.busy || submitting} onKeyDown={(event) => {
             if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); }
           }} />
           <div className={styles.composerActions}><span>{state?.busy ? '工作中…' : settings?.name ?? '请先配置模型'}</span><button type="submit" aria-label="发送消息" className={styles.send} disabled={!settings || !state || state.busy || submitting}><ArrowUp size={18} /></button></div>

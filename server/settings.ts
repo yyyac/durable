@@ -27,7 +27,8 @@ export class SettingsStore {
     if (!['http:', 'https:'].includes(url.protocol)) throw new Error('接口地址必须使用 HTTP 或 HTTPS');
     const apiKey = typeof fields.apiKey === 'string' && fields.apiKey ? fields.apiKey : this.value?.apiKey;
     if (!apiKey) throw new Error('请填写 API Key');
-    const next: StoredSettings = { baseUrl: (fields.baseUrl as string).trim().replace(/\/$/, ''), modelId: (fields.modelId as string).trim(), name: (fields.name as string).trim(), apiKey };
+    if (fields.protocol !== undefined && !['openai-completions', 'anthropic-messages'].includes(fields.protocol as string)) throw new Error('不支持的接口协议');
+    const next: StoredSettings = { baseUrl: (fields.baseUrl as string).trim().replace(/\/$/, ''), modelId: (fields.modelId as string).trim(), name: (fields.name as string).trim(), apiKey, supportsThinking: fields.supportsThinking === true || fields.supportsThinking === 'on', protocol: fields.protocol === 'anthropic-messages' ? fields.protocol : 'openai-completions' };
     const path = join(this.directory, 'models.json');
     await writeFile(`${path}.tmp`, `${JSON.stringify(next, null, 2)}\n`, 'utf8');
     await rename(`${path}.tmp`, path);

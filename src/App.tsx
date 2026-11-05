@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { ArrowUp } from 'lucide-react';
 import { SettingsDialog } from './SettingsDialog';
+import { MessageContent } from './MessageContent';
+import { useFollowingScroll } from './useFollowingScroll';
 import { Sidebar } from './Sidebar';
 import { useConversations } from './useConversations';
 import { useConversation } from './useConversation';
@@ -37,16 +39,16 @@ export function App() {
     finally { if (currentId.current === sendingId) setSubmitting(false); }
   }
   const messages = [...(state?.messages ?? []), ...(state?.generation ? [state.generation] : [])];
+  const { scrollRef, onScroll } = useFollowingScroll(state?.id, messages);
   return <div className={styles.workbench}>
     <Sidebar conversations={conversations} selectedId={selectedId} onSelect={select} onCreate={() => { void create(); }} creating={creating || !selectedId}>
       <SettingsDialog settings={settings} onSaved={setSettings} />
     </Sidebar>
     <main className={styles.main}>
       <header className={styles.header}>{conversations.find((conversation) => conversation.id === selectedId)?.title ?? '新会话'}</header>
-      <div className={styles.messages}>
-        {messages.length ? <div className={styles.transcript}>{messages.map((message) => <article key={message.id} className={message.role === 'user' ? styles.userMessage : styles.assistantMessage}>
-          <div data-testid={message.role === 'assistant' ? 'assistant-message' : 'user-message'}>{message.content.map((block) => block.type === 'text' ? block.text : '').join('')}</div>
-          <time>{new Date(message.timestamp).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}</time>
+      <div className={styles.messages} ref={scrollRef} onScroll={onScroll}>
+        {messages.length ? <div className={styles.transcript}>{messages.map((message) => <article key={`${state?.id}:${message.role}:${message.timestamp}`} className={message.role === 'user' ? styles.userMessage : styles.assistantMessage}>
+          <MessageContent message={message} streaming={message === state?.generation} />
         </article>)}</div> : <div className={styles.empty}><h2>开始一次对话</h2>{settings ? <p>{settings.name}</p> : <><p>尚未配置模型</p><p>请先在设置中添加模型服务。</p></>}</div>}
       </div>
       <div className={styles.composerArea}>

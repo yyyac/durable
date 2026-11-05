@@ -93,6 +93,7 @@ export class Workbench {
     });
     this.process.stdout?.on('data', (value) => { this.output += String(value); });
     this.process.stderr?.on('data', (value) => { this.output += String(value); });
+    this.process.on('exit', (code) => { if (code) console.error(this.output); });
     for (let count = 0; count < 100; count++) {
       try { if ((await fetch(`${this.url}/api/health`)).ok) return; } catch {}
       if (this.process.exitCode !== null) throw new Error(this.output);

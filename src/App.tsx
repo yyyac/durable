@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { ArrowUp, Square } from 'lucide-react';
 import { SettingsDialog } from './SettingsDialog';
+import { ModelSelector } from './ModelSelector';
 import { MessageContent } from './MessageContent';
 import { useFollowingScroll } from './useFollowingScroll';
 import { Sidebar } from './Sidebar';
 import { useConversations } from './useConversations';
 import { useConversation } from './useConversation';
-import { canRetryReply, type ModelSettings } from './types';
+import { canRetryReply, selectedModel, type ModelSettings } from './types';
 import styles from './App.module.css';
 
 export function App() {
@@ -15,6 +16,7 @@ export function App() {
   const [submitting, setSubmitting] = useState(false);
   const [stopping, setStopping] = useState(false);
   const [error, setError] = useState('');
+  const selected = selectedModel(settings);
   const { conversations, selectedId, select, create, creating, refresh, error: listError } = useConversations();
   const { state, connection } = useConversation(selectedId);
   const currentId = useRef(selectedId);
@@ -28,12 +30,12 @@ export function App() {
   }, [selectedId]);
   async function send(event: FormEvent) {
     event.preventDefault();
-    if (!state || !settings || state.busy || submitting || !input.trim()) return;
+    if (!state || !selected || state.busy || submitting || !input.trim()) return;
     setSubmitting(true);
     setError('');
     const sendingId = state.id;
     try {
-      const response = await fetch(`/api/conversations/${state.id}/messages`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ content: input }) });
+      const response = await fetch(`/api/conversations/${state.id}/messages`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ content: input, modelSelection: settings?.selectedModel }) });
       if (!response.ok) throw new Error((await response.json()).error);
       if (currentId.current === sendingId) setInput('');
       await refresh();
@@ -41,12 +43,12 @@ export function App() {
     finally { if (currentId.current === sendingId) setSubmitting(false); }
   }
   async function retry() {
-    if (!state || state.busy || submitting || !canRetryReply(state.failure)) return;
+    if (!state || !selected || state.busy || submitting || !canRetryReply(state.failure)) return;
     const retryingId = state.id;
     setSubmitting(true);
     setError('');
     try {
-      const response = await fetch(`/api/conversations/${retryingId}/retry`, { method: 'POST' });
+      const response = await fetch(`/api/conversations/${retryingId}/retry`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ modelSelection: settings?.selectedModel }) });
       if (!response.ok) throw new Error((await response.json()).error);
     } catch (error) { if (currentId.current === retryingId) setError((error as Error).message); }
     finally { if (currentId.current === retryingId) setSubmitting(false); }
@@ -73,10 +75,10 @@ export function App() {
       <div className={styles.messages} ref={scrollRef} onScroll={onScroll}>
         {messages.length ? <div className={styles.transcript}>{messages.map((message) => <article key={`${state?.id}:${message.role}:${message.timestamp}`} className={message.role === 'user' ? styles.userMessage : styles.assistantMessage}>
           <MessageContent message={message} streaming={message === state?.generation} showFailureDetail={state?.busy || !canRetryReply(state?.failure) || message !== state?.messages.at(-1)} />
-        </article>)}</div> : <div className={styles.empty}><h2>开始一次对话</h2>{settings ? <p>{settings.name}</p> : <><p>尚未配置模型</p><p>请先在设置中添加模型服务。</p></>}</div>}
+        </article>)}</div> : <div className={styles.empty}><h2>开始一次对话</h2>{selected ? <p>{selected.model.name}</p> : <><p>尚未配置模型</p><p>请先在设置中添加模型服务。</p></>}</div>}
         {!state?.busy && canRetryReply(state?.failure) && <div role="alert" className={styles.failureNotice}>
           <p>回复失败：{state?.failure?.detail || '模型未能完成回复，请检查模型服务后重试。'}</p>
-          <button type="button" onClick={() => { void retry(); }} disabled={submitting}>重试回复</button>
+          <button type="button" onClick={() => { void retry(); }} disabled={submitting || !selected}>重试回复</button>
         </div>}
       </div>
       <div className={styles.composerArea}>
@@ -84,10 +86,10 @@ export function App() {
         {state?.failure?.reason === 'aborted' && messages.at(-1)?.termination !== 'stopped' && <p role="status" className={styles.connection}>已停止</p>}
         {(error || listError) && <p role="alert" className={styles.error}>{error || listError}</p>}
         <form className={styles.composer} onSubmit={send}>
-          <textarea aria-label="输入消息" placeholder="输入消息…" value={input} onChange={(event) => setInput(event.target.value)} disabled={!settings || !state || state.busy || submitting} onKeyDown={(event) => {
+          <textarea aria-label="输入消息" placeholder="输入消息…" value={input} onChange={(event) => setInput(event.target.value)} disabled={!selected || !state || state.busy || submitting} onKeyDown={(event) => {
             if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); }
           }} />
-          <div className={styles.composerActions}><span>{state?.busy ? '工作中…' : settings?.name ?? '请先配置模型'}</span>{state?.busy ? <button type="button" aria-label="停止生成" className={styles.send} disabled={stopping} onClick={() => { void stop(); }}><Square size={12} fill="currentColor" /></button> : <button type="submit" aria-label="发送消息" className={styles.send} disabled={!settings || !state || submitting}><ArrowUp size={18} /></button>}</div>
+          <div className={styles.composerActions}><span>{state?.busy ? '工作中…' : selected ? '' : '请先配置模型'}</span>{settings && selected && <ModelSelector settings={settings} onSaved={setSettings} />}{state?.busy ? <button type="button" aria-label="停止生成" className={styles.send} disabled={stopping} onClick={() => { void stop(); }}><Square size={12} fill="currentColor" /></button> : <button type="submit" aria-label="发送消息" className={styles.send} disabled={!selected || !state || submitting}><ArrowUp size={18} /></button>}</div>
         </form>
         <p className={styles.inputHint}>Enter 发送，Shift + Enter 换行</p>
       </div>

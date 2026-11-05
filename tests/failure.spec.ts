@@ -13,7 +13,7 @@ async function configure(page: import('@playwright/test').Page, url: string, thi
   await page.getByRole('button', { name: '保存配置' }).click();
 }
 
-test('请求失败可阅读原因，手动重试不重复问题或启动重叠生成', async ({ page, workbench, upstream }) => {
+test('请求失败可阅读原因，手动重试不重复问题或启动重叠生成', async ({ page, workbench, upstream }, testInfo) => {
   await page.goto(workbench.url);
   await configure(page, upstream.url);
   upstream.enqueue({ chunks: [], failure: { status: 401, message: '请求凭据无效，请检查模型服务' } });
@@ -26,7 +26,7 @@ test('请求失败可阅读原因，手动重试不重复问题或启动重叠�
   expect(upstream.requests).toHaveLength(1);
   await page.reload();
   await expect(page.getByRole('alert')).toContainText('请求凭据无效');
-  await page.screenshot({ path: 'C:/Users/yyya/.codex/visualizations/2026/11/05/01a1aa98-cbf6-74a3-b305-5cdf00994c45/ticket7-empty-failure.png' });
+  await page.screenshot({ path: testInfo.outputPath('empty-failure.png') });
   upstream.enqueue({ chunks: ['重试的完整答案', '，只有一次。'], pauseAfter: 0 });
   await page.getByRole('button', { name: '重试回复' }).dblclick();
   await expect(page.getByTestId('assistant-message').last()).toContainText('重试的完整答案');
@@ -46,7 +46,7 @@ test('请求失败可阅读原因，手动重试不重复问题或启动重叠�
   expect(upstream.requests).toHaveLength(2);
 });
 
-test('中途流失败保留已展开思考和部分正文，恢复上游后手动重试成功', async ({ page, workbench, upstream }) => {
+test('中途流失败保留已展开思考和部分正文，恢复上游后手动重试成功', async ({ page, workbench, upstream }, testInfo) => {
   await page.goto(workbench.url);
   await configure(page, upstream.url, true);
   upstream.enqueue({ chunks: [{ thinking: '已经产生的可见思考' }, '未完成的正文'], pauseAfter: 1, streamError: '输出被上游拒绝' });
@@ -61,7 +61,7 @@ test('中途流失败保留已展开思考和部分正文，恢复上游后手�
   await expect(page.getByText('已经产生的可见思考', { exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: '发送消息' })).toBeEnabled();
   expect(upstream.requests).toHaveLength(1);
-  await page.screenshot({ path: 'C:/Users/yyya/.codex/visualizations/2026/11/05/01a1aa98-cbf6-74a3-b305-5cdf00994c45/ticket7-partial-failure.png' });
+  await page.screenshot({ path: testInfo.outputPath('partial-failure.png') });
   await page.reload();
   await expect(page.getByRole('alert')).toContainText('输出被上游拒绝');
   await page.getByRole('button', { name: /思考过程/ }).click();

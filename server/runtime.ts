@@ -67,6 +67,7 @@ export class Runtime {
     const harness = await Harness.open(storage, { models: () => modelsFor(settings.value), registry: createRegistry(), settings: { stream: { maxRetries: 0 }, compaction: { enabled: false } } }, context);
     const root = await harness.root(context, { agent: { tools: [], modelTools: [] } });
     await harness.commit((tx) => addConversation(tx, root.id), context);
+    harness.resume();
     return new Runtime(harness, root, settings);
   }
   async createConversation() {

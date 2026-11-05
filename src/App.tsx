@@ -1,6 +1,8 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { ArrowUp } from 'lucide-react';
 import { SettingsDialog } from './SettingsDialog';
+import { MessageContent } from './MessageContent';
+import { useFollowingScroll } from './useFollowingScroll';
 import type { ModelSettings, ConversationState } from './types';
 import styles from './App.module.css';
 
@@ -34,6 +36,7 @@ export function App() {
     finally { setSubmitting(false); }
   }
   const messages = [...(state?.messages ?? []), ...(state?.generation ? [state.generation] : [])];
+  const { scrollRef, onScroll } = useFollowingScroll(state?.id, messages);
   return <div className={styles.workbench}>
     <aside className={styles.sidebar}>
       <h1><span className={styles.logo}>Ⅱ</span>个人 Agent 工作台</h1>
@@ -43,10 +46,9 @@ export function App() {
     </aside>
     <main className={styles.main}>
       <header className={styles.header}>新会话</header>
-      <div className={styles.messages}>
-        {messages.length ? <div className={styles.transcript}>{messages.map((message) => <article key={message.id} className={message.role === 'user' ? styles.userMessage : styles.assistantMessage}>
-          <div data-testid={message.role === 'assistant' ? 'assistant-message' : 'user-message'}>{message.content.map((block) => block.type === 'text' ? block.text : '').join('')}</div>
-          <time>{new Date(message.timestamp).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}</time>
+      <div className={styles.messages} ref={scrollRef} onScroll={onScroll}>
+        {messages.length ? <div className={styles.transcript}>{messages.map((message) => <article key={`${message.role}:${message.timestamp}`} className={message.role === 'user' ? styles.userMessage : styles.assistantMessage}>
+          <MessageContent message={message} streaming={message === state?.generation} />
         </article>)}</div> : <div className={styles.empty}><h2>开始一次对话</h2>{settings ? <p>{settings.name}</p> : <><p>尚未配置模型</p><p>请先在设置中添加模型服务。</p></>}</div>}
       </div>
       <div className={styles.composerArea}>

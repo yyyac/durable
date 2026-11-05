@@ -24,7 +24,9 @@ button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 2px
 .dialog h2 { margin: 0 0 8px; font-size: 20px; font-weight: 600; }
 .dialog p { color: #92969c; }
 .dialog label { display: flex; flex-direction: column; gap: 7px; margin: 18px 0; }
-.dialog input { border: 1px solid #dfe1e5; border-radius: 8px; padding: 10px 12px; width: 100%; }
+.dialog input, .dialog select { border: 1px solid #dfe1e5; border-radius: 8px; padding: 10px 12px; width: 100%; background: white; }
+.dialog .checkboxLabel { flex-direction: row; align-items: center; }
+.dialog .checkboxLabel input { width: 16px; height: 16px; accent-color: #2685ff; }
 .close { position: absolute; top: 18px; right: 18px; display: flex; padding: 5px; border-radius: 5px; }
 .formColumns { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
 .primary { padding: 10px 18px; background: #202226; color: white; border-radius: 8px; }
@@ -33,7 +35,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 2px
 .transcript article { margin-bottom: 26px; line-height: 1.8; white-space: pre-wrap; overflow-wrap: anywhere; }
 .transcript time { display: block; font-size: 12px; color: #92969c; margin-top: 6px; }
 .userMessage { display: flex; flex-direction: column; align-items: flex-end; }
-.userMessage > div { padding: 8px 13px; background: #f4f4f5; border-radius: 14px; max-width: 85%; }
+.userMessage > div:first-child { padding: 8px 13px; background: #f4f4f5; border-radius: 14px; max-width: 85%; }
 .assistantMessage { padding: 0 2px; }
 .composerArea { padding: 0 24px 12px; width: 100%; max-width: 776px; margin: 0 auto; }
 .composer { border: 1px solid #d9dce0; border-radius: 20px; padding: 12px 14px; box-shadow: 0 2px 7px #00000004; }

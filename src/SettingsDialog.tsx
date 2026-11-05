@@ -31,6 +31,7 @@ export function SettingsDialog({ settings, onSaved }: { settings: ModelSettings 
         <Dialog.Title>模型设置</Dialog.Title>
         <Dialog.Description>配置自己的模型服务，在本机保存连接信息。</Dialog.Description>
         <form onSubmit={save}>
+          <label>接口协议<select name="protocol" defaultValue={settings?.protocol ?? 'openai-completions'}><option value="openai-completions">OpenAI Chat Completions</option><option value="anthropic-messages">Anthropic Messages</option></select></label>
           <label>接口地址<input name="baseUrl" type="url" defaultValue={settings?.baseUrl} placeholder="https://api.example.com/v1" required /></label>
           <label>API Key<input name="apiKey" type="password" autoComplete="new-password" placeholder={settings ? '留空保留已保存的密钥' : '输入 API Key'} required={!settings} /></label>
           {settings && <p>已保存密钥：{settings.apiKeyMasked}</p>}
@@ -38,6 +39,7 @@ export function SettingsDialog({ settings, onSaved }: { settings: ModelSettings 
             <label>模型 ID<input name="modelId" defaultValue={settings?.modelId} placeholder="服务提供的模型 ID" required /></label>
             <label>模型名称<input name="name" defaultValue={settings?.name} placeholder="用于显示的名称" required /></label>
           </div>
+          <label className={styles.checkboxLabel}><input name="supportsThinking" type="checkbox" defaultChecked={settings?.supportsThinking ?? false} />支持思考内容</label>
           {error && <p role="alert" className={styles.error}>{error}</p>}
           <p>API Key 以明文保存在本机，保存后仅显示脱敏值。</p>
           <button type="submit" className={styles.primary} disabled={saving}>{saving ? '保存中…' : '保存配置'}</button>

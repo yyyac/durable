@@ -38,6 +38,16 @@ app.post('/api/conversations/:id/messages', async (c) => {
     return c.json({ error: error instanceof ConversationBusy ? '当前会话正在生成，请等待完成' : (error as Error).message }, error instanceof ConversationBusy ? 409 : 400);
   }
 });
+app.post('/api/conversations/:id/retry', async (c) => {
+  try {
+    const conversation = await runtime.conversation(c.req.param('id'));
+    await runtime.prepare(conversation);
+    const id = await runtime.retry(conversation);
+    return id === null ? c.json({ error: '当前回复无法重试' }, 409) : c.json({ id }, 202);
+  } catch (error) {
+    return c.json({ error: (error as Error).message }, 400);
+  }
+});
 app.get('/api/conversations/:id/events', async (c) => {
   const conversation = await runtime.conversation(c.req.param('id'));
   return streamSSE(c, async (stream) => {

@@ -36,6 +36,10 @@ button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 2px
 .formColumns { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
 .primary { padding: 10px 18px; background: #202226; color: white; border-radius: 8px; }
 .error { color: #bd3535 !important; }
+.failureNotice { max-width: 728px; margin: 14px auto 24px; color: #b54949; line-height: 1.7; }
+.failureNotice p { margin: 0 0 10px; overflow-wrap: anywhere; }
+.failureNotice button { color: #494f58; border: 1px solid #e0e2e5; border-radius: 8px; padding: 6px 12px; background: #fff; }
+.failureNotice button:hover { background: #f6f7f8; }
 .connection { color: #73777e; font-size: 12px; margin: 0 0 8px; }
 .transcript { max-width: 728px; margin: 0 auto; }
 .transcript article { margin-bottom: 26px; line-height: 1.8; white-space: pre-wrap; overflow-wrap: anywhere; }

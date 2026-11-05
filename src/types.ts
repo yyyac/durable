@@ -14,6 +14,11 @@ export interface ChatMessage {
   content: ContentBlock[];
   timestamp: number;
   stopReason?: string;
+  errorMessage?: string;
+}
+
+export function canRetryReply(failure: ConversationState['failure']) {
+  return Boolean(failure && ['model_error', 'no_model', 'faulted', 'orphaned', 'interrupted', 'restart_limit'].includes(failure.reason));
 }
 export interface ConversationState {
   id: string;

@@ -6,7 +6,7 @@ import { useFollowingScroll } from './useFollowingScroll';
 import { Sidebar } from './Sidebar';
 import { useConversations } from './useConversations';
 import { useConversation } from './useConversation';
-import type { ModelSettings } from './types';
+import { canRetryReply, type ModelSettings } from './types';
 import styles from './App.module.css';
 
 export function App() {
@@ -38,6 +38,17 @@ export function App() {
     } catch (error) { if (currentId.current === sendingId) setError((error as Error).message); }
     finally { if (currentId.current === sendingId) setSubmitting(false); }
   }
+  async function retry() {
+    if (!state || state.busy || submitting || !canRetryReply(state.failure)) return;
+    const retryingId = state.id;
+    setSubmitting(true);
+    setError('');
+    try {
+      const response = await fetch(`/api/conversations/${retryingId}/retry`, { method: 'POST' });
+      if (!response.ok) throw new Error((await response.json()).error);
+    } catch (error) { if (currentId.current === retryingId) setError((error as Error).message); }
+    finally { if (currentId.current === retryingId) setSubmitting(false); }
+  }
   const messages = [...(state?.messages ?? []), ...(state?.generation ? [state.generation] : [])];
   const { scrollRef, onScroll } = useFollowingScroll(state?.id, messages);
   return <div className={styles.workbench}>
@@ -48,8 +59,12 @@ export function App() {
       <header className={styles.header}>{conversations.find((conversation) => conversation.id === selectedId)?.title ?? '新会话'}</header>
       <div className={styles.messages} ref={scrollRef} onScroll={onScroll}>
         {messages.length ? <div className={styles.transcript}>{messages.map((message) => <article key={`${state?.id}:${message.role}:${message.timestamp}`} className={message.role === 'user' ? styles.userMessage : styles.assistantMessage}>
-          <MessageContent message={message} streaming={message === state?.generation} />
+          <MessageContent message={message} streaming={message === state?.generation} showFailureDetail={state?.busy || !canRetryReply(state?.failure) || message !== state?.messages.at(-1)} />
         </article>)}</div> : <div className={styles.empty}><h2>开始一次对话</h2>{settings ? <p>{settings.name}</p> : <><p>尚未配置模型</p><p>请先在设置中添加模型服务。</p></>}</div>}
+        {!state?.busy && canRetryReply(state?.failure) && <div role="alert" className={styles.failureNotice}>
+          <p>回复失败：{state?.failure?.detail || '模型未能完成回复，请检查模型服务后重试。'}</p>
+          <button type="button" onClick={() => { void retry(); }} disabled={submitting}>重试回复</button>
+        </div>}
       </div>
       <div className={styles.composerArea}>
         {connection === 'reconnecting' && <p role="status" className={styles.connection}>连接已断开，正在重连…</p>}

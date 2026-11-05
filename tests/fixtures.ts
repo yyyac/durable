@@ -7,7 +7,7 @@ import { spawn, type ChildProcess } from 'node:child_process';
 import { once } from 'node:events';
 import { fileURLToPath } from 'node:url';
 
-type Plan = { chunks: Array<string | { thinking: string } | { redacted: string }>; pauseAfter?: number };
+type Plan = { chunks: Array<string | { thinking: string } | { redacted: string }>; pauseAfter?: number; failure?: { status: number; message: string }; streamError?: string };
 type UpstreamRequest = { model: string; messages: Array<{ role: string; content: unknown }>; reasoning_effort?: string };
 
 export class Upstream {
@@ -19,6 +19,11 @@ export class Upstream {
     for await (const chunk of req) body += chunk;
     this.requests.push(JSON.parse(body));
     const plan = this.plans.shift() ?? { chunks: ['测试回复'] };
+    if (plan.failure) {
+      res.writeHead(plan.failure.status, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ error: { type: 'invalid_request_error', message: plan.failure.message } }));
+      return;
+    }
     res.writeHead(200, { 'content-type': 'text/event-stream' });
     if (new URL(req.url ?? '/', 'http://localhost').pathname.endsWith('/messages')) {
       await this.messages(res, plan);
@@ -55,6 +60,11 @@ export class Upstream {
       await new Promise((resolve) => setTimeout(resolve, 150));
     }
     if (blockIndex >= 0) event('content_block_stop', { index: blockIndex });
+    if (plan.streamError) {
+      event('error', { error: { type: 'invalid_request_error', message: plan.streamError } });
+      res.end();
+      return;
+    }
     event('message_delta', { delta: { stop_reason: 'end_turn', stop_sequence: null }, usage: { output_tokens: 10 } });
     event('message_stop', {});
     res.end();

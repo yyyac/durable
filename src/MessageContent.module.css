@@ -20,3 +20,5 @@
 .copyButton:hover { color: #3a414a; background: #edf0f3; }
 .footer { display: flex; align-items: center; gap: 8px; margin-top: 6px; color: #92969c; font-size: 12px; }
 .footer time { margin-top: 0; }
+.footer { flex-wrap: wrap; }
+.failure { color: #b54949; overflow-wrap: anywhere; }

@@ -47,7 +47,7 @@ function ThinkingBlock({ text, active }: { text: string; active: boolean }) {
   </section>;
 }
 
-export function MessageContent({ message, streaming }: { message: ChatMessage; streaming: boolean }) {
+export function MessageContent({ message, streaming, showFailureDetail = true }: { message: ChatMessage; streaming: boolean; showFailureDetail?: boolean }) {
   const body = message.content.flatMap((block) => block.type === 'text' ? [block.text] : []).join('\n\n');
   return <>
   <div data-testid={message.role === 'assistant' ? 'assistant-message' : 'user-message'}>
@@ -55,6 +55,6 @@ export function MessageContent({ message, streaming }: { message: ChatMessage; s
       ? <ThinkingBlock key={index} text={block.thinking} active={streaming && index === message.content.length - 1} />
       : message.role === 'assistant' ? <div key={index} className={styles.markdown}><Markdown components={{ pre: CodeBlock }}>{block.text}</Markdown></div> : <div key={index}>{block.text}</div>)}
   </div>
-  <div className={styles.footer}><time>{new Date(message.timestamp).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}</time>{message.role === 'assistant' && body && <CopyButton label="复制正文" text={() => body} />}</div>
+  <div className={styles.footer}><time>{new Date(message.timestamp).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}</time>{message.role === 'assistant' && body && <CopyButton label="复制正文" text={() => body} />}{message.stopReason === 'error' && <span className={styles.failure}>回复失败{showFailureDetail && `：${message.errorMessage || '模型未能完成回复'}`}</span>}</div>
   </>;
 }

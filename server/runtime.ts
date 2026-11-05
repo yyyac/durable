@@ -3,12 +3,13 @@ import { createModels, createProvider } from '@earendil-works/pi-ai/models';
 import { openAICompletionsApi } from '@earendil-works/pi-ai/api/openai-completions.lazy';
 import { anthropicMessagesApi } from '@earendil-works/pi-ai/api/anthropic-messages.lazy';
 import type { Message } from '@earendil-works/pi-ai';
-import { createRegistry, Harness, type Conversation, type ConversationView, type EntryRecord, type Cursor, type ConversationId } from '@earendil-works/pi-durable';
+import { createRegistry, Harness, LiveDoc, type Conversation, type ConversationView, type EntryRecord, type Cursor, type ConversationId } from '@earendil-works/pi-durable';
 import { openNodeSqliteStorage } from '@earendil-works/pi-durable/storage/sqlite/node';
 import { join } from 'node:path';
 import type { ChatMessage, ConversationState, ContentBlock } from '../src/types.js';
 import { SettingsStore, type StoredSettings } from './settings.js';
 import { addConversation } from './conversations.js';
+import { canRetryReply } from '../src/types.js';
 
 export const context = BACKGROUND_CONTEXT;
 
@@ -29,6 +30,17 @@ function modelsFor(settings: StoredSettings | null) {
   return models;
 }
 
+function readableFailure(text: string | undefined) {
+  if (!text) return text;
+  const start = text.indexOf('{');
+  if (start < 0) return text;
+  try {
+    const payload = JSON.parse(text.slice(start)) as { error?: { message?: unknown }; message?: unknown };
+    const message = payload?.error?.message ?? payload?.message;
+    return typeof message === 'string' && message ? message : text;
+  } catch { return text; }
+}
+
 function displayMessage(id: string, message: Message): ChatMessage | null {
   if (message.role !== 'user' && message.role !== 'assistant') return null;
   const content: ContentBlock[] = typeof message.content === 'string' ? [{ type: 'text', text: message.content }] : message.content.flatMap((block): ContentBlock[] => {
@@ -36,7 +48,7 @@ function displayMessage(id: string, message: Message): ChatMessage | null {
     if (block.type === 'thinking' && block.thinking && !block.redacted) return [{ type: 'thinking', thinking: block.thinking }];
     return [];
   });
-  return { id, role: message.role, content, timestamp: message.timestamp, ...(message.role === 'assistant' ? { stopReason: message.stopReason } : {}) };
+  return { id, role: message.role, content, timestamp: message.timestamp, ...(message.role === 'assistant' ? { stopReason: message.stopReason, errorMessage: readableFailure(message.errorMessage) } : {}) };
 }
 
 export function stateFrom(view: ConversationView, entries: readonly EntryRecord[]): ConversationState {
@@ -50,7 +62,7 @@ export function stateFrom(view: ConversationView, entries: readonly EntryRecord[
     messages,
     generation: live?.generation?.message ? displayMessage(`live:${live.run?.taskId}`, live.generation.message) : null,
     busy: Boolean(live?.run),
-    failure: live?.runFailure,
+    failure: live?.runFailure ? { ...live.runFailure, detail: readableFailure(live.runFailure.detail) } : undefined,
   };
 }
 
@@ -77,6 +89,15 @@ export class Runtime {
   async prepare(conversation: Conversation) {
     if (!this.settings.value) throw new Error('尚未配置模型');
     await conversation.configure({ model: { provider: 'configured', modelId: this.settings.value.modelId }, thinkingLevel: this.settings.value.supportsThinking ? 'medium' : 'off', tools: [], modelTools: [] }, context);
+  }
+  async retry(conversation: Conversation) {
+    const id = await conversation.commit(async (tx) => {
+      const live = await tx.doc(LiveDoc, conversation.id);
+      if (live.run || !canRetryReply(live.runFailure)) return null;
+      return conversation.submit(tx, { type: 'continue' });
+    }, context);
+    if (id !== null) this.harness.resume();
+    return id;
   }
   async olderEntries(conversation: Conversation, view: ConversationView) {
     const entries: EntryRecord[] = [];

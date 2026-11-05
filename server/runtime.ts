@@ -10,6 +10,7 @@ import { join } from 'node:path';
 import type { ChatMessage, ConversationState, ContentBlock, ModelSelection } from '../src/types.js';
 import { SettingsStore, type StoredSettings } from './settings.js';
 import { addConversation } from './conversations.js';
+import { canRetryReply } from '../src/types.js';
 
 export const context = BACKGROUND_CONTEXT;
 const STOP_ENTRY_KIND = 'workbench.stop';
@@ -32,6 +33,17 @@ function modelsFor(settings: StoredSettings | null) {
   return models;
 }
 
+function readableFailure(text: string | undefined) {
+  if (!text) return text;
+  const start = text.indexOf('{');
+  if (start < 0) return text;
+  try {
+    const payload = JSON.parse(text.slice(start)) as { error?: { message?: unknown }; message?: unknown };
+    const message = payload?.error?.message ?? payload?.message;
+    return typeof message === 'string' && message ? message : text;
+  } catch { return text; }
+}
+
 function displayMessage(id: string, message: Message): ChatMessage | null {
   if (message.role !== 'user' && message.role !== 'assistant') return null;
   const content: ContentBlock[] = typeof message.content === 'string' ? [{ type: 'text', text: message.content }] : message.content.flatMap((block): ContentBlock[] => {
@@ -39,7 +51,7 @@ function displayMessage(id: string, message: Message): ChatMessage | null {
     if (block.type === 'thinking' && block.thinking && !block.redacted) return [{ type: 'thinking', thinking: block.thinking }];
     return [];
   });
-  return { id, role: message.role, content, timestamp: message.timestamp, ...(message.role === 'assistant' ? { stopReason: message.stopReason } : {}) };
+  return { id, role: message.role, content, timestamp: message.timestamp, ...(message.role === 'assistant' ? { stopReason: message.stopReason, errorMessage: readableFailure(message.errorMessage) } : {}) };
 }
 
 export function stateFrom(view: ConversationView, entries: readonly EntryRecord[]): ConversationState {
@@ -57,7 +69,7 @@ export function stateFrom(view: ConversationView, entries: readonly EntryRecord[
     messages,
     generation: live?.generation?.message ? displayMessage(`live:${live.run?.taskId}`, live.generation.message) : null,
     busy: Boolean(live?.run),
-    failure: live?.runFailure,
+    failure: live?.runFailure ? { ...live.runFailure, detail: readableFailure(live.runFailure.detail) } : undefined,
   };
 }
 
@@ -84,6 +96,15 @@ export class Runtime {
   async prepare(conversation: Conversation, selection?: ModelSelection) {
     const { service, model } = this.settings.model(selection);
     await conversation.configure({ model: { provider: service.id, modelId: model.modelId }, thinkingLevel: model.supportsThinking ? 'medium' : 'off', tools: [], modelTools: [] }, context);
+  }
+  async retry(conversation: Conversation) {
+    const id = await conversation.commit(async (tx) => {
+      const live = await tx.doc(LiveDoc, conversation.id);
+      if (live.run || !canRetryReply(live.runFailure)) return null;
+      return conversation.submit(tx, { type: 'continue' });
+    }, context);
+    if (id !== null) this.harness.resume();
+    return id;
   }
   async stop(conversation: Conversation) {
     await conversation.commit(async (tx) => {

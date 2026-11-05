@@ -7,7 +7,7 @@ import { spawn, type ChildProcess } from 'node:child_process';
 import { once } from 'node:events';
 import { fileURLToPath } from 'node:url';
 
-type Plan = { chunks: Array<string | { thinking: string } | { redacted: string }>; pauseAfter?: number; delayMs?: number; failure?: { status: number; message: string }; streamError?: string };
+type Plan = { chunks: Array<string | { thinking: string } | { redacted: string }>; pauseAfter?: number; delayMs?: number; failure?: { status: number; message: string }; streamError?: string; usage?: { prompt_tokens: number; completion_tokens: number; total_tokens: number } };
 type UpstreamRequest = { model: string; messages: Array<{ role: string; content: unknown }>; reasoning_effort?: string };
 
 export class Upstream {
@@ -40,6 +40,7 @@ export class Upstream {
       await new Promise((resolve) => setTimeout(resolve, plan.delayMs ?? 150));
     }
     res.write(`data: ${JSON.stringify({ id: 'chat-test', object: 'chat.completion.chunk', created: 1, model: 'test-model', choices: [{ index: 0, delta: {}, finish_reason: 'stop' }] })}\n\n`);
+    if (plan.usage) res.write(`data: ${JSON.stringify({ id: 'chat-test', object: 'chat.completion.chunk', created: 1, model: 'test-model', choices: [], usage: plan.usage })}\n\n`);
     res.end('data: [DONE]\n\n');
   });
   private chunk(res: ServerResponse, delta: object) {

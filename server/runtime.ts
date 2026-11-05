@@ -4,6 +4,7 @@ import { openAICompletionsApi } from '@earendil-works/pi-ai/api/openai-completio
 import { openAIResponsesApi } from '@earendil-works/pi-ai/api/openai-responses.lazy';
 import { anthropicMessagesApi } from '@earendil-works/pi-ai/api/anthropic-messages.lazy';
 import type { Message } from '@earendil-works/pi-ai';
+import { estimateContextTokens, estimateMessageTokens } from '@earendil-works/pi-ai/utils/estimate';
 import { configure, ConversationBusy, createRegistry, Harness, LiveDoc, type Conversation, type ConversationView, type EntryRecord, type Cursor, type ConversationId, type Tx } from '@earendil-works/pi-durable';
 import { openNodeSqliteStorage } from '@earendil-works/pi-durable/storage/sqlite/node';
 import { join } from 'node:path';
@@ -27,7 +28,7 @@ function modelsFor(settings: StoredSettings | null) {
     models: service.models.map((model) => ({
       id: model.modelId, name: model.name, provider: service.id, api: service.protocol,
       baseUrl: service.baseUrl, reasoning: model.supportsThinking, input: ['text'],
-      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }, contextWindow: 131072, maxTokens: 16384,
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }, contextWindow: model.contextWindow, maxTokens: model.maxTokens,
     })),
     api: service.protocol === 'anthropic-messages' ? anthropicMessagesApi() : service.protocol === 'openai-responses' ? openAIResponsesApi() : openAICompletionsApi(),
   }));
@@ -55,8 +56,12 @@ function displayMessage(id: string, message: Message, taskId: number | undefined
   return { id, role: message.role, content, timestamp: message.timestamp, ...(message.role === 'assistant' ? { stopReason: message.stopReason, errorMessage: readableFailure(message.errorMessage) } : {}) };
 }
 
-export function stateFrom(view: ConversationView, entries: readonly EntryRecord[], timings: ThinkingTimings = { blocks: {} }): ConversationState {
+export function stateFrom(view: ConversationView, entries: readonly EntryRecord[], modelContext: readonly Message[], timings: ThinkingTimings = { blocks: {} }): ConversationState {
   const live = view.docs['pi.live'] as { run?: { taskId: number }; generation?: { message?: Message }; runFailure?: { reason: string; detail?: string } } | undefined;
+  const usage = estimateContextTokens(modelContext);
+  const usageMessage = usage.lastUsageIndex === null ? undefined : modelContext[usage.lastUsageIndex];
+  const partial = live?.generation?.message;
+  const partialTokens = partial && !modelContext.some((message) => message.role === 'assistant' && message.timestamp === partial.timestamp) ? estimateMessageTokens(partial) : 0;
   const stopped = entries.filter((entry) => entry.kind === STOP_ENTRY_KIND).map((entry) => entry.data as StoppedAttempt);
   const messages = entries.flatMap((entry) => (entry.model ?? []).flatMap((message, index) => {
     const projected = displayMessage(`${entry.id}:${index}`, message, entry.byTaskId, timings);
@@ -70,6 +75,11 @@ export function stateFrom(view: ConversationView, entries: readonly EntryRecord[
     messages,
     generation: live?.generation?.message ? displayMessage(`live:${live.run?.taskId}`, live.generation.message, live.run?.taskId, timings) : null,
     busy: Boolean(live?.run),
+    contextUsage: {
+      tokens: usage.tokens + partialTokens,
+      estimated: usage.trailingTokens > 0 || partialTokens > 0,
+      model: usageMessage?.role === 'assistant' ? { provider: usageMessage.provider, modelId: usageMessage.model } : undefined,
+    },
     failure: live?.runFailure ? { ...live.runFailure, detail: readableFailure(live.runFailure.detail) } : undefined,
   };
 }

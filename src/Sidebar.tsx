@@ -3,6 +3,7 @@ import { MessageCirclePlus } from 'lucide-react';
 import type { ConversationSummary } from './types';
 import { ConversationMenu } from './ConversationMenu';
 import { ConversationSearch } from './ConversationSearch';
+import { BrandLogo } from './BrandLogo';
 import styles from './App.module.css';
 import management from './ConversationManagement.module.css';
 
@@ -17,7 +18,7 @@ export function Sidebar({ conversations, selectedId, onSelect, onCreate, onRenam
   children: ReactNode;
 }) {
   return <aside className={styles.sidebar}>
-    <h1><span className={styles.logo}>Ⅱ</span>个人 Agent 工作台</h1>
+    <h1><BrandLogo className={styles.logo} />个人 Agent 工作台</h1>
     <button className={styles.newConversation} onClick={onCreate} disabled={creating}>
       <MessageCirclePlus size={16} /><span>新建会话</span>
     </button>

@@ -1,5 +1,5 @@
-.thinking { margin: 6px 0 12px; }
-.thinkingToggle { display: flex; align-items: center; gap: 8px; padding: 3px 0; color: #82868c; font-size: 13px; line-height: 22px; }
+.thinking { margin: 6px 0 12px; font-size: 14px; }
+.thinkingToggle { display: flex; align-items: center; gap: 8px; padding: 3px 0; color: #82868c; font-size: inherit; line-height: 22px; }
 .thinkingToggle:hover { color: #454a52; }
 .expanded { transform: rotate(90deg); }
 .thinkingText { padding: 8px 0 0 29px; color: #8b8e94; white-space: pre-wrap; line-height: 1.6; }

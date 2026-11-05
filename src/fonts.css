@@ -1,0 +1,23 @@
+@font-face {
+  font-family: "Schibsted Grotesk Variable";
+  font-style: normal;
+  font-weight: 400 900;
+  font-display: swap;
+  src: url('/fonts/SchibstedGrotesk-Variable.woff2') format('woff2-variations');
+}
+
+@font-face {
+  font-family: "Schibsted Grotesk Variable";
+  font-style: italic;
+  font-weight: 400 900;
+  font-display: swap;
+  src: url('/fonts/SchibstedGrotesk-Italic-Variable.woff2') format('woff2-variations');
+}
+
+@font-face {
+  font-family: "Noto Sans SC Variable";
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url('/fonts/NotoSansSC-Variable.woff2') format('woff2-variations');
+}

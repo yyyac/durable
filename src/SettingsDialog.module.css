@@ -1,26 +1,84 @@
-.dialog { position: fixed; inset: 50% auto auto 50%; transform: translate(-50%, -50%); display: flex; width: min(880px, calc(100vw - 40px)); height: min(680px, calc(100dvh - 48px)); border-radius: 16px; background: #fff; box-shadow: 0 12px 60px #0003; overflow: hidden; }
-.navigation { width: 184px; flex-shrink: 0; padding: 20px 8px; border-right: 1px solid #e5e5e5; display: flex; flex-direction: column; gap: 8px; }
-.navigation h2 { font-size: 16px; margin: 0 12px 14px; }
-.section { display: flex; align-items: center; gap: 10px; padding: 10px; margin: 0; color: #555; }
-.serviceList { flex: 1; overflow-y: auto; }
-.serviceList button { display: block; width: 100%; text-align: left; padding: 10px; border-radius: 8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.serviceList button:hover, .active { background: #f3f3f3; }
-.addService { display: flex; gap: 6px; align-items: center; padding: 10px; font-size: 13px; }
-.form { flex: 1; min-width: 0; display: flex; flex-direction: column; }
-.scroll { padding: 46px 32px 18px; overflow-y: auto; flex: 1; min-height: 0; }
-.scroll > p { font-size: 12px; color: #92969c; margin: 0 0 18px; }
-.scroll label { display: flex; flex-direction: column; gap: 7px; margin: 14px 0; font-size: 13px; }
-.scroll input, .scroll select { border: 1px solid #dfe1e5; border-radius: 7px; padding: 8px 10px; width: 100%; background: #fff; font: inherit; }
-.titleRow { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
-.titleRow h3 { font-size: 14px; font-weight: 500; margin: 14px 0 4px; }
-.titleRow button { display: flex; align-items: center; gap: 5px; font-size: 12px; padding: 5px; }
-.model { border-bottom: 1px solid #eee; padding-bottom: 7px; }
-.modelFields { display: flex; gap: 12px; align-items: center; }
-.modelFields label { flex: 1; min-width: 0; }
-.modelFields > button { margin-top: 26px; padding: 3px; }
-.scroll .checkbox { flex-direction: row; align-items: center; margin: 0 0 10px; }
-.checkbox input { width: auto; }
-.footer { border-top: 1px solid #eee; display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 16px 24px; }
-.footer span { font-size: 11px; color: #92969c; }
-.footer button { white-space: nowrap; }
-@media (max-width: 650px) { .navigation { width: 140px; } .scroll { padding: 38px 16px 16px; } .modelFields { flex-wrap: wrap; gap: 4px; } .footer { padding: 12px; } .footer span { max-width: 150px; } }
+.overlay { position: fixed; inset: 0; background: #0005; animation: appear 140ms ease-out; }
+.dialog { position: fixed; inset: 50% auto auto 50%; transform: translate(-50%, -50%); display: flex; width: min(1000px, calc(100vw - 40px)); height: min(760px, calc(100dvh - 48px)); border: 1px solid #e8e8e8; border-radius: 16px; background: #fff; box-shadow: 0 16px 60px #0002; overflow: hidden; animation: appear 140ms ease-out; }
+.navigation { width: 184px; flex-shrink: 0; padding: 24px 8px 16px; border-right: 1px solid #e8e8e8; display: flex; flex-direction: column; gap: 8px; }
+.navigation h2 { font-size: 16px; font-weight: 600; margin: 0 12px 20px; }
+.section { display: flex; align-items: center; gap: 10px; padding: 10px 12px; margin: 0; color: #666; font-size: 13px; }
+.serviceList { flex: 1; min-height: 0; overflow-y: auto; }
+.serviceList button { display: block; width: 100%; text-align: left; padding: 10px 12px; border-radius: 8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+.serviceList button:hover, .active { background: #f5f5f5; }
+.serviceList .active { font-weight: 500; color: #17191c; }
+.addService { display: flex; gap: 6px; align-items: center; padding: 10px 12px; border-radius: 8px; font-size: 13px; }
+.addService:hover { background: #f5f5f5; }
+.form { flex: 1; min-width: 0; display: flex; flex-direction: column; padding: 0 32px; }
+.header { display: flex; align-items: center; gap: 10px; flex-shrink: 0; min-height: 86px; padding: 26px 38px 18px 0; border-bottom: 1px solid #e5e5e5; }
+.header h3 { margin: 0; font-size: 15px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.serviceIcon { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; width: 32px; height: 32px; border-radius: 9px; background: #eef4ff; color: #2879ee; }
+.close { position: absolute; top: 17px; right: 17px; display: flex; padding: 5px; border-radius: 6px; color: #666; }
+.close:hover { background: #f5f5f5; }
+.scroll { padding: 18px 0 20px; overflow-y: auto; flex: 1; min-height: 0; scrollbar-width: thin; scrollbar-gutter: stable; }
+.fields { min-width: 0; padding: 0; margin: 0; border: 0; }
+.field { display: block; margin: 0 0 16px; font-size: 13px; color: #555; }
+.required { color: #dc4c43; }
+.field > input, .field > select, .keyField { display: block; margin-top: 7px; }
+.fields input:not([type="checkbox"]), .fields select { border: 1px solid #d9d9d9; border-radius: 7px; padding: 8px 12px; width: 100%; min-width: 0; height: 36px; background: #fff; color: #25272b; font: inherit; box-shadow: 0 1px 2px #00000004; transition: border-color 120ms; }
+.fields input:not([type="checkbox"]):hover, .fields select:hover { border-color: #b5b5b5; }
+.fields input:focus-visible, .fields select:focus-visible { outline: 2px solid #2685ff; outline-offset: 1px; }
+.fields input::placeholder { color: #9a9a9a; }
+.keyField { position: relative; }
+.keyField input { padding-right: 40px !important; }
+.keyField button { position: absolute; right: 5px; top: 4px; display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 5px; color: #666; }
+.keyField button:hover:not(:disabled) { background: #f5f5f5; }
+.fields .savedKey::placeholder { color: #25272b; opacity: 1; letter-spacing: 2px; }
+.models { margin-top: 24px; }
+.modelsTitle { display: flex; align-items: baseline; gap: 10px; margin-bottom: 14px; }
+.modelsTitle h4 { margin: 0; font-size: 14px; font-weight: 500; }
+.modelsTitle > span { color: #888; font-size: 12px; }
+.modelHead, .modelFields { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(90px, .85fr) minmax(90px, .85fr) minmax(0, 1.2fr) 28px; gap: 10px; align-items: center; }
+.modelHead { margin-bottom: 8px; color: #777; font-size: 12px; }
+.model { margin-bottom: 12px; }
+.modelFields label { display: block; min-width: 0; font-size: 13px; }
+.modelLabel { display: none; }
+.removeModel { display: flex; align-items: center; justify-content: center; width: 28px; height: 30px; border-radius: 5px; color: #666; }
+.removeModel:hover { color: #cf443c; background: #fff1f0; }
+.checkbox { display: flex; align-items: center; gap: 7px; margin-top: 8px; color: #777; font-size: 12px; }
+.checkbox input { margin: 0; accent-color: #2685ff; }
+.addModel { display: inline-flex; gap: 6px; align-items: center; padding: 6px 8px; margin-left: -8px; border-radius: 6px; color: #555; font-size: 13px; }
+.addModel:hover { background: #f5f5f5; color: #17191c; }
+.footer { flex-shrink: 0; border-top: 1px solid #e5e5e5; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 18px 0; }
+.footer button { white-space: nowrap; font-size: 13px; border-radius: 6px; padding: 8px 12px; }
+.deleteService { background: #fff1f0; color: #d94e43; border: 1px solid #ffc9c4; }
+.deleteService:hover { background: #ffe5e2; }
+.actions { display: flex; align-items: center; gap: 12px; margin-left: auto; }
+.actions > button:first-child { color: #555; }
+.actions > button:first-child:hover { background: #f5f5f5; }
+.actions .save { background: #2685ff; color: #fff; font-weight: 500; padding-inline: 16px; }
+.actions .save:hover { background: #1675ed; }
+.empty { color: #777; font-size: 13px; line-height: 1.7; }
+.visuallyHidden { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
+@keyframes appear { from { opacity: 0; } to { opacity: 1; } }
+@media (max-width: 800px) {
+  .navigation { width: 150px; }
+  .form { padding-inline: 20px; }
+  .modelHead { display: none; }
+  .modelFields { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 28px; align-items: end; }
+  .modelFields > label:first-child, .modelFields > label:nth-child(4) { grid-column: 1 / 3; }
+  .modelFields > button { grid-column: 3; grid-row: 1; margin-bottom: 3px; }
+  .modelLabel { display: block; margin-bottom: 6px; font-size: 12px; color: #777; }
+  .model { margin-bottom: 18px; }
+}
+@media (max-width: 500px) {
+  .dialog { width: calc(100vw - 16px); height: calc(100dvh - 24px); border-radius: 12px; flex-direction: column; }
+  .navigation { width: 100%; max-height: 150px; padding: 14px 12px 10px; border-right: 0; border-bottom: 1px solid #e8e8e8; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
+  .navigation h2 { margin: 0; align-self: center; }
+  .section { display: none; }
+  .serviceList { grid-column: 1 / -1; grid-row: 2; display: flex; gap: 4px; overflow-x: auto; }
+  .serviceList button { flex: 0 0 auto; width: auto; max-width: 180px; }
+  .addService { grid-column: 2; grid-row: 1; padding: 6px 24px 6px 6px; font-size: 12px; }
+  .form { min-height: 0; padding-inline: 16px; }
+  .header { min-height: 64px; padding: 14px 0; }
+  .close { top: 13px; right: 10px; }
+  .footer { padding-block: 12px; gap: 8px; }
+  .footer button { padding-inline: 8px; font-size: 12px; }
+  .actions { gap: 4px; }
+}
+@media (prefers-reduced-motion: reduce) { .overlay, .dialog { animation: none; } .fields input, .fields select { transition: none; } }

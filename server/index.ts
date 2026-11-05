@@ -77,7 +77,8 @@ app.get('/api/conversations/:id/events', async (c) => {
       const entries = new Map((await runtime.olderEntries(conversation, watch.value)).map((entry) => [entry.id, entry]));
       const publish = async (view: typeof watch.value) => {
         for (const entry of view.entries) entries.set(entry.id, entry);
-        await stream.writeSSE({ event: 'state', data: JSON.stringify(stateFrom(view, [...entries.values()], await runtime.thinking.read(conversation.id))) });
+        const modelContext = await conversation.context(context, { at: view.entries.at(-1)?.id ?? view.before });
+        await stream.writeSSE({ event: 'state', data: JSON.stringify(stateFrom(view, [...entries.values()], modelContext.messages, await runtime.thinking.read(conversation.id))) });
       };
       await publish(watch.value);
       watch.start(async (call) => { if (call.kind === 'value') await publish(call.value); });

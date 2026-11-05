@@ -5,6 +5,7 @@ import { ModelSelector } from './ModelSelector';
 import { MessageContent } from './MessageContent';
 import { useFollowingScroll } from './useFollowingScroll';
 import { Sidebar } from './Sidebar';
+import { BrandLogo } from './BrandLogo';
 import { useConversations } from './useConversations';
 import { useConversation } from './useConversation';
 import { canRetryReply, selectedModel, type ModelSettings } from './types';
@@ -64,7 +65,9 @@ export function App() {
     } catch (error) { if (currentId.current === stoppingId) setError((error as Error).message); }
     finally { if (currentId.current === stoppingId) setStopping(false); }
   }
-  const messages = [...(state?.messages ?? []), ...(state?.generation ? [state.generation] : [])];
+  const visibleGeneration = state?.generation?.content.some((block) => (block.type === 'text' ? block.text : block.thinking).trim()) ? state.generation : null;
+  const messages = [...(state?.messages ?? []), ...(visibleGeneration ? [visibleGeneration] : [])];
+  const requesting = (submitting || state?.busy) && !visibleGeneration;
   const { scrollRef, onScroll } = useFollowingScroll(state?.id, messages);
   return <div className={styles.workbench}>
     <Sidebar conversations={conversations} selectedId={selectedId} onSelect={select} onCreate={() => { void create(); }} onRename={rename} onArchive={archive} creating={creating || !selectedId}>
@@ -73,9 +76,9 @@ export function App() {
     <main className={styles.main}>
       <header className={styles.header}>{conversations.find((conversation) => conversation.id === selectedId)?.title ?? '新会话'}</header>
       <div className={styles.messages} ref={scrollRef} onScroll={onScroll}>
-        {messages.length ? <div className={styles.transcript}>{messages.map((message) => <article key={`${state?.id}:${message.role}:${message.timestamp}`} className={message.role === 'user' ? styles.userMessage : styles.assistantMessage}>
+        {messages.length || requesting ? <div className={styles.transcript}>{messages.map((message) => <article key={`${state?.id}:${message.role}:${message.timestamp}`} className={message.role === 'user' ? styles.userMessage : styles.assistantMessage}>
           <MessageContent message={message} streaming={message === state?.generation} showFailureDetail={state?.busy || !canRetryReply(state?.failure) || message !== state?.messages.at(-1)} />
-        </article>)}</div> : <div className={styles.empty}><h2>开始一次对话</h2>{selected ? <p>{selected.model.name}</p> : <><p>尚未配置模型</p><p>请先在设置中添加模型服务。</p></>}</div>}
+        </article>)}{requesting && <div role="status" aria-label="正在请求模型" className={styles.requesting}><BrandLogo size={22} className={styles.requestLogo} /><span>请求中…</span></div>}</div> : <div className={styles.empty}><h2>开始一次对话</h2>{selected ? <p>{selected.model.name}</p> : <><p>尚未配置模型</p><p>请先在设置中添加模型服务。</p></>}</div>}
         {!state?.busy && canRetryReply(state?.failure) && <div role="alert" className={styles.failureNotice}>
           <p>回复失败：{state?.failure?.detail || '模型未能完成回复，请检查模型服务后重试。'}</p>
           <button type="button" onClick={() => { void retry(); }} disabled={submitting || !selected}>重试回复</button>
@@ -89,7 +92,7 @@ export function App() {
           <textarea aria-label="输入消息" placeholder="输入消息…" value={input} onChange={(event) => setInput(event.target.value)} disabled={!selected || !state || state.busy || submitting || creating} onKeyDown={(event) => {
             if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); }
           }} />
-          <div className={styles.composerActions}><span>{state?.busy ? '工作中…' : selected ? '' : '请先配置模型'}</span>{settings && selected && <ModelSelector settings={settings} onSaved={setSettings} />}{state?.busy ? <button type="button" aria-label="停止生成" className={styles.send} disabled={stopping} onClick={() => { void stop(); }}><Square size={12} fill="currentColor" /></button> : <button type="submit" aria-label="发送消息" className={styles.send} disabled={!selected || !state || submitting || creating}><ArrowUp size={18} /></button>}</div>
+          <div className={styles.composerActions}><span>{state?.busy ? '工作中…' : selected ? '' : '请先配置模型'}</span>{settings && selected && <ModelSelector settings={settings} contextUsage={state?.contextUsage ?? null} onSaved={setSettings} />}{state?.busy ? <button type="button" aria-label="停止生成" className={styles.send} disabled={stopping} onClick={() => { void stop(); }}><Square size={12} fill="currentColor" /></button> : <button type="submit" aria-label="发送消息" className={styles.send} disabled={!selected || !state || submitting || creating}><ArrowUp size={18} /></button>}</div>
         </form>
         <p className={styles.inputHint}>Enter 发送，Shift + Enter 换行</p>
       </div>

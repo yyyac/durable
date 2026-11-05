@@ -1,5 +1,7 @@
-.selector { position: relative; margin-left: auto; margin-right: 8px; }
-.trigger { display: flex; gap: 6px; align-items: center; padding: 5px 6px; border-radius: 6px; color: #565b62; font-size: 12px; }
+.selector { position: relative; display: flex; align-items: center; gap: 4px; min-width: 0; margin-left: auto; margin-right: 8px; }
+.trigger { display: flex; gap: 7px; align-items: center; min-width: 0; padding: 6px; border-radius: 6px; color: #25272b; font-size: 14px; font-weight: 500; line-height: 1.4; }
+.trigger > svg { flex-shrink: 0; color: #8c9096; }
+.modelName { max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .trigger:hover { background: #f4f4f5; }
 .menu { width: 230px; max-height: min(400px, calc(100dvh - 80px)); overflow-y: auto; padding: 6px; background: #fff; border: 1px solid #e4e5e7; border-radius: 12px; box-shadow: 0 3px 14px #00000014; z-index: 5; }
 .label { color: #85888d; font-size: 11px; font-weight: 600; padding: 8px 10px 5px; }

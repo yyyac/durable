@@ -1,0 +1,9 @@
+.indicator { position: relative; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 30px; border-radius: 6px; cursor: default; }
+.indicator:focus-visible { outline: 2px solid #2685ff; outline-offset: 2px; }
+.track { stroke: #e0e3e7; }
+.progress { stroke: #2685ff; transform: rotate(-90deg); transform-origin: center; transition: stroke-dashoffset 180ms ease-out; }
+.nearFull .progress { stroke: #d68c20; }
+.full .progress { stroke: #d94e43; }
+.tooltip { position: absolute; bottom: calc(100% + 7px); left: 50%; transform: translateX(-50%); z-index: 5; width: max-content; max-width: min(340px, calc(100vw - 32px)); padding: 6px 9px; border-radius: 6px; background: #17191c; color: #fff; font-size: 12px; font-weight: 400; line-height: 1.5; white-space: normal; visibility: hidden; opacity: 0; transition: opacity 120ms; pointer-events: none; }
+.indicator:hover .tooltip, .indicator:focus-visible .tooltip { visibility: visible; opacity: 1; }
+@media (prefers-reduced-motion: reduce) { .progress, .tooltip { transition: none; } }

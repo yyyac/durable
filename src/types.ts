@@ -1,11 +1,13 @@
 export type ModelProtocol = 'openai-completions' | 'openai-responses' | 'anthropic-messages';
-export interface ConfiguredModel { id: string; modelId: string; name: string; supportsThinking: boolean }
+export const DEFAULT_CONTEXT_WINDOW = 131072;
+export const DEFAULT_MAX_TOKENS = 16384;
+export interface ConfiguredModel { id: string; modelId: string; name: string; contextWindow: number; maxTokens: number; supportsThinking: boolean }
 export interface ModelService {
   id: string;
   name: string;
   protocol: ModelProtocol;
   baseUrl: string;
-  apiKeyMasked: string;
+  hasApiKey: boolean;
   models: ConfiguredModel[];
 }
 export interface ModelSelection { serviceId: string; modelId: string }
@@ -35,11 +37,13 @@ export interface ChatMessage {
 export function canRetryReply(failure: ConversationState['failure']) {
   return Boolean(failure && ['model_error', 'no_model', 'faulted', 'orphaned', 'interrupted', 'restart_limit'].includes(failure.reason));
 }
+export type ContextUsage = { tokens: number; estimated: boolean; model?: { provider: string; modelId: string } };
 export interface ConversationState {
   id: string;
   messages: ChatMessage[];
   generation: ChatMessage | null;
   busy: boolean;
+  contextUsage: ContextUsage;
   failure?: { reason: string; detail?: string };
 }
 

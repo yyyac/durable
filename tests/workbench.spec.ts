@@ -54,7 +54,8 @@ test('设置保存后只显示脱敏密钥，刷新后仍然保留模型', async
   await page.reload();
   await page.getByRole('button', { name: '打开设置' }).click();
   await expect(page.getByLabel('API Key', { exact: true })).toHaveValue('');
-  await expect(page.getByText('已保存密钥：••••echo')).toBeVisible();
+  await expect(page.getByLabel('API Key', { exact: true })).toHaveAttribute('placeholder', '••••••••••••••••');
+  await expect(page.getByText('已保存密钥', { exact: false })).toHaveCount(0);
   const summary = await (await page.request.get(`${workbench.url}/api/settings`)).text();
   expect(summary).not.toContain('test-secret-do-not-echo');
   expect(summary).toContain('本地测试模型');

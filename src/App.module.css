@@ -1,4 +1,4 @@
-:root { font-family: "Helvetica Neue", Arial, "Noto Sans SC", sans-serif; color: #17191c; background: #fff; font-synthesis: none; font-size: 14px; }
+:root { font-family: "Schibsted Grotesk Variable", "Helvetica Neue", Arial, "Noto Sans SC Variable", "Noto Sans SC", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Source Han Sans SC", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Ubuntu, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji"; color: #17191c; background: #fff; font-synthesis: none; font-size: 14px; }
 * { box-sizing: border-box; }
 body { margin: 0; }
 button, input, textarea { font: inherit; }
@@ -8,7 +8,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 2px
 .workbench { display: flex; height: 100dvh; }
 .sidebar { width: 270px; flex-shrink: 0; padding: 14px 8px; border-right: 1px solid #e2e4e6; background: #f8fafb; display: flex; flex-direction: column; }
 .sidebar h1 { display: flex; align-items: center; gap: 9px; margin: 0 5px 14px; font-size: 14px; font-weight: 500; white-space: nowrap; }
-.logo { display: inline-flex; justify-content: center; align-items: center; background: #2588ff; color: white; width: 30px; height: 21px; font-weight: 700; border-radius: 6px; }
+.logo { display: block; flex-shrink: 0; width: 28px; height: 28px; }
 .sectionLabel { color: #969ca3; padding: 0 8px; margin: 14px 0; font-size: 12px; }
 .selected, .conversation { display: block; width: 100%; text-align: left; border-radius: 8px; padding: 9px 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .selected { background: #eceff1; }
@@ -39,10 +39,14 @@ button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 2px
 .userMessage { display: flex; flex-direction: column; align-items: flex-end; }
 .userMessage > div:first-child { padding: 8px 13px; background: #f4f4f5; border-radius: 14px; max-width: 85%; }
 .assistantMessage { padding: 0 2px; }
+.requesting { display: flex; align-items: center; gap: 10px; max-width: 728px; margin: 0 auto 24px; padding: 0 2px; min-height: 28px; color: #92969c; font-size: 14px; line-height: 24px; }
+.requestLogo { display: block; flex-shrink: 0; animation: requestPulse 1.4s ease-in-out infinite; }
+@keyframes requestPulse { 0%, 100% { opacity: .5; transform: scale(.96); } 50% { opacity: 1; transform: scale(1); } }
+@media (prefers-reduced-motion: reduce) { .requestLogo { animation: none; } }
 .composerArea { padding: 0 24px 12px; width: 100%; max-width: 776px; margin: 0 auto; }
 .composer { border: 1px solid #d9dce0; border-radius: 20px; padding: 12px 14px; box-shadow: 0 2px 7px #00000004; }
 .composer textarea { display: block; border: 0; outline: none; resize: none; background: transparent; width: 100%; min-height: 55px; max-height: 200px; padding: 0 2px; line-height: 1.6; }
 .composerActions { display: flex; align-items: center; justify-content: space-between; color: #73777e; font-size: 12px; }
-.send { display: flex; align-items: center; justify-content: center; width: 29px; height: 29px; border-radius: 50%; background: #22252a; color: white; }
+.send { display: flex; align-items: center; justify-content: center; flex-shrink: 0; width: 29px; height: 29px; border-radius: 50%; background: #22252a; color: white; }
 .inputHint { text-align: center; color: #a3a7ad; font-size: 11px; margin: 9px 0 0; }
 @media (max-width: 650px) { .sidebar { width: 190px; } .sidebar h1 { font-size: 12px; gap: 5px; } }

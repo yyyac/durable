@@ -2,8 +2,9 @@ import { mkdir, readFile, writeFile, rename } from 'node:fs/promises';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import type { ConfiguredModel, ModelProtocol, ModelSelection, ModelService, ModelSettings } from '../src/types.js';
+import { DEFAULT_CONTEXT_WINDOW, DEFAULT_MAX_TOKENS } from '../src/types.js';
 
-type StoredService = Omit<ModelService, 'apiKeyMasked'> & { apiKey: string };
+type StoredService = Omit<ModelService, 'hasApiKey'> & { apiKey: string };
 export type StoredSettings = Omit<ModelSettings, 'services'> & { services: StoredService[] };
 
 function text(value: unknown, message: string): string {
@@ -15,7 +16,7 @@ function normalize(input: unknown, previous: StoredSettings | null): StoredSetti
   const fields = input as Record<string, unknown>;
   const incoming = Array.isArray(fields.services) ? fields.services : [{
     ...fields, id: 'configured', name: '模型服务',
-    models: [{ id: 'legacy', modelId: fields.modelId, name: fields.name, supportsThinking: fields.supportsThinking === true || fields.supportsThinking === 'on' }],
+    models: [{ id: 'legacy', modelId: fields.modelId, name: fields.name, contextWindow: fields.contextWindow, maxTokens: fields.maxTokens, supportsThinking: fields.supportsThinking === true || fields.supportsThinking === 'on' }],
   }];
   const services: StoredService[] = incoming.map((item) => {
     const service = item as Record<string, unknown>;
@@ -31,7 +32,12 @@ function normalize(input: unknown, previous: StoredSettings | null): StoredSetti
     if (!Array.isArray(service.models)) throw new Error('模型列表无效');
     const models: ConfiguredModel[] = service.models.map((value) => {
       const model = value as Record<string, unknown>;
-      return { id: typeof model.id === 'string' && model.id ? model.id : randomUUID(), modelId: text(model.modelId, '请填写模型 ID'), name: text(model.name, '请填写模型名称'), supportsThinking: model.supportsThinking === true };
+      const contextWindow = model.contextWindow === undefined ? DEFAULT_CONTEXT_WINDOW : model.contextWindow;
+      if (typeof contextWindow !== 'number' || !Number.isSafeInteger(contextWindow) || contextWindow <= 0) throw new Error('模型上下文大小必须为正整数');
+      const maxTokens = model.maxTokens === undefined ? Math.min(DEFAULT_MAX_TOKENS, contextWindow) : model.maxTokens;
+      if (typeof maxTokens !== 'number' || !Number.isSafeInteger(maxTokens) || maxTokens <= 0) throw new Error('模型最大输出必须为正整数');
+      if (maxTokens > contextWindow) throw new Error('模型最大输出不能超过上下文大小');
+      return { id: typeof model.id === 'string' && model.id ? model.id : randomUUID(), modelId: text(model.modelId, '请填写模型 ID'), name: text(model.name, '请填写模型名称'), contextWindow, maxTokens, supportsThinking: model.supportsThinking === true };
     });
     if (new Set(models.map((model) => model.id)).size !== models.length || new Set(models.map((model) => model.modelId)).size !== models.length) throw new Error('同一服务中的模型 ID 不能重复');
     return { id, name, baseUrl, protocol: protocol as ModelProtocol, apiKey, models };
@@ -54,7 +60,7 @@ export class SettingsStore {
   }
   summary(): ModelSettings | null {
     if (!this.value) return null;
-    return { ...this.value, services: this.value.services.map(({ apiKey, ...service }) => ({ ...service, apiKeyMasked: `••••${apiKey.length >= 8 ? apiKey.slice(-4) : ''}` })) };
+    return { ...this.value, services: this.value.services.map(({ apiKey, ...service }) => ({ ...service, hasApiKey: Boolean(apiKey) })) };
   }
   private update(change: () => StoredSettings) {
     const operation = this.pending.then(async () => {

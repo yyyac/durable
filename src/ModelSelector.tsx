@@ -1,10 +1,11 @@
 import { useState } from 'react';
 import * as Menu from '@radix-ui/react-dropdown-menu';
 import { Check, ChevronDown } from 'lucide-react';
-import { selectedModel, type ModelSettings } from './types';
+import { selectedModel, type ContextUsage, type ModelSettings } from './types';
+import { ContextUsageIndicator } from './ContextUsageIndicator';
 import styles from './ModelSelector.module.css';
 
-export function ModelSelector({ settings, onSaved }: { settings: ModelSettings; onSaved: (settings: ModelSettings) => void }) {
+export function ModelSelector({ settings, contextUsage, onSaved }: { settings: ModelSettings; contextUsage: ContextUsage | null; onSaved: (settings: ModelSettings) => void }) {
   const selected = selectedModel(settings);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
@@ -20,8 +21,9 @@ export function ModelSelector({ settings, onSaved }: { settings: ModelSettings; 
     finally { setSaving(false); }
   }
   return <div className={styles.selector}>
+    {selected && <ContextUsageIndicator usage={contextUsage} contextWindow={selected.model.contextWindow} provider={selected.service.id} modelId={selected.model.modelId} />}
     <Menu.Root>
-      <Menu.Trigger className={styles.trigger} aria-label="选择模型" disabled={saving}>{selected?.model.name ?? '选择模型'}<ChevronDown size={14} /></Menu.Trigger>
+      <Menu.Trigger className={styles.trigger} aria-label="选择模型" disabled={saving}><span className={styles.modelName}>{selected?.model.name ?? '选择模型'}</span><ChevronDown size={14} /></Menu.Trigger>
       <Menu.Portal><Menu.Content className={styles.menu} side="top" align="end" sideOffset={8}>
         <Menu.RadioGroup value={JSON.stringify([selected?.service.id, selected?.model.id])} onValueChange={(value) => { void select(value); }}>
           {settings.services.filter((service) => service.models.length).map((service) => <Menu.Group key={service.id}>

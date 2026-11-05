@@ -7,7 +7,7 @@ button:disabled { cursor: default; opacity: .45; }
 button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 2px solid #2685ff; outline-offset: 2px; }
 .workbench { display: flex; height: 100dvh; }
 .sidebar { width: 270px; flex-shrink: 0; padding: 14px 8px; border-right: 1px solid #e2e4e6; background: #f8fafb; display: flex; flex-direction: column; }
-.sidebar h1 { display: flex; align-items: center; gap: 9px; margin: 0 5px 30px; font-size: 14px; font-weight: 500; white-space: nowrap; }
+.sidebar h1 { display: flex; align-items: center; gap: 9px; margin: 0 5px 14px; font-size: 14px; font-weight: 500; white-space: nowrap; }
 .logo { display: inline-flex; justify-content: center; align-items: center; background: #2588ff; color: white; width: 30px; height: 21px; font-weight: 700; border-radius: 6px; }
 .sectionLabel { color: #969ca3; padding: 0 8px; margin: 14px 0; font-size: 12px; }
 .selected, .conversation { display: block; width: 100%; text-align: left; border-radius: 8px; padding: 9px 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

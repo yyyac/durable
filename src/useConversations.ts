@@ -8,16 +8,19 @@ function locationId() {
 export function useConversations() {
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const selectedRef = useRef(selectedId);
+  selectedRef.current = selectedId;
   const [error, setError] = useState('');
   const [creating, setCreating] = useState(false);
   const requestVersion = useRef(0);
   const select = useCallback((id: string, replace = false) => {
+    selectedRef.current = id;
     setSelectedId(id);
     window.history[replace ? 'replaceState' : 'pushState']({}, '', `/conversations/${id}`);
   }, []);
   const refresh = useCallback(async () => {
     const version = ++requestVersion.current;
-    const response = await fetch('/api/conversations');
+    const response = await fetch('/api/conversations?includeArchived=true');
     if (!response.ok) throw new Error('无法读取会话列表');
     const items: ConversationSummary[] = await response.json();
     if (version === requestVersion.current) setConversations(items);
@@ -28,7 +31,7 @@ export function useConversations() {
     void refresh().then((items) => {
       if (!active) return;
       const requested = locationId();
-      const id = items.find((item) => item.id === requested)?.id ?? items[0]?.id;
+      const id = items.find((item) => item.id === requested)?.id ?? items.find((item) => !item.archived)?.id;
       if (id) select(id, true);
     }).catch((error: Error) => { if (active) setError(error.message); });
     return () => { active = false; };
@@ -56,5 +59,20 @@ export function useConversations() {
     } catch (error) { setError((error as Error).message); }
     finally { setCreating(false); }
   }
-  return { conversations, selectedId, select, create, creating, refresh, error };
+  async function rename(id: string, title: string) {
+    const response = await fetch(`/api/conversations/${id}`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ title }) });
+    if (!response.ok) throw new Error((await response.json()).error);
+    await refresh();
+  }
+  async function archive(id: string) {
+    const response = await fetch(`/api/conversations/${id}`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ archived: true }) });
+    if (!response.ok) throw new Error((await response.json()).error);
+    const items = await refresh();
+    if (selectedRef.current === id) {
+      const next = items.find((item) => !item.archived);
+      if (next) select(next.id, true);
+      else await create();
+    }
+  }
+  return { conversations, selectedId, select, create, creating, refresh, rename, archive, error };
 }

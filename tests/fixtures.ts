@@ -67,6 +67,12 @@ export class Workbench {
     this.process.kill();
     await exited;
   }
+  async crash() {
+    if (!this.process || this.process.exitCode !== null) return;
+    const exited = once(this.process, 'exit');
+    this.process.kill('SIGKILL');
+    await exited;
+  }
 }
 
 export const test = base.extend<{ workbench: Workbench; upstream: Upstream }>({

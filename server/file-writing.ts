@@ -7,16 +7,32 @@ import { NodeExecutionEnv } from '@earendil-works/pi-durable/env/node';
 import type { Context } from '@earendil-works/chord/context';
 import type { ConversationId, JsonObject, Tx, ToolExecutionResult, TaskId, EntryId } from '@earendil-works/pi-durable';
 import { recoverableTool } from './tool-recovery.js';
-import { FileReadsDoc, hashFile, identityOf, withFileLock } from './file-versions.js';
+import { FileReadsDoc, hashFile, identityOf, withFileLock, sameFilePath } from './file-versions.js';
 import type { RecoveryCall } from './tool-calls.js';
 
 type FileIntent = { kind: 'create'; path: string } | { kind: 'overwrite' | 'edit'; path: string; identity: string; hash: string; readId: string };
 function conflict() { return new Error('文件冲突：目标在读取后已经变化，请重新读取后处理；没有覆盖当前内容'); }
+async function openExistingFile(path: string, flags: string) {
+  try { return await open(path, flags); }
+  catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') throw conflict(); throw error; }
+}
 async function absoluteFilePath(args: JsonObject, env: ExecutionEnv, context: Context) {
   const path = String(args.path).replace(/[\u00A0\u2000-\u200A\u202F\u205F\u3000]/g, ' ').replace(/^@/, '');
   const absolute = await env.absolutePath(path, context);
   if (!absolute.ok) throw absolute.error;
   return absolute.value;
+}
+async function completedRead(tx: Tx, readId: string, missingMessage?: string) {
+  const task = await tx.task(Number(readId) as TaskId);
+  const outcome = task?.state.outcome;
+  const result = outcome?.status === 'completed' || (missingMessage !== undefined && outcome?.status === 'failed') ? outcome.result as { entryId?: number } : undefined;
+  const entry = result?.entryId === undefined ? undefined : await tx.entry(result.entryId as EntryId);
+  const diagnostics = (entry?.data as { diagnostics?: Array<{ message: string }> } | undefined)?.diagnostics;
+  return entry?.model?.some((message) => {
+    if (message.role !== 'toolResult') return false;
+    if (missingMessage === undefined) return !message.isError;
+    return message.isError && (diagnostics?.some((item) => item.message.includes(missingMessage)) || message.content.some((block) => block.type === 'text' && block.text.includes(missingMessage)));
+  }) === true;
 }
 async function prepareFile(tx: Tx, conversationId: ConversationId, args: JsonObject, env: ExecutionEnv, context: Context): Promise<JsonObject> {
   const absolute = await absoluteFilePath(args, env, context);
@@ -26,17 +42,21 @@ async function prepareFile(tx: Tx, conversationId: ConversationId, args: JsonObj
     if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
     try { await lstat(absolute); throw new Error('目标路径已存在，不能创建'); }
     catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
-    return { kind: 'create', path: join(await realpath(dirname(absolute)), basename(absolute)) };
+    const path = join(await realpath(dirname(absolute)), basename(absolute));
+    const reads = await tx.doc(FileReadsDoc, conversationId);
+    if (reads.items.some((item) => sameFilePath(item.path, path))) {
+      const missing = reads.missing?.find((item) => sameFilePath(item.path, path));
+      if (!missing || !await completedRead(tx, missing.readId, missing.message)) throw conflict();
+    }
+    return { kind: 'create', path };
   }
   const file = await open(canonical, 'r');
   try {
     const identity = await identityOf(file);
-    const read = (await tx.doc(FileReadsDoc, conversationId)).items.find((item) => item.identity === identity);
+    const reads = await tx.doc(FileReadsDoc, conversationId);
+    const read = reads.items.find((item) => item.identity === identity);
     if (!read) throw new Error('目标文件已存在，必须先在当前会话成功读取后才能覆盖或编辑');
-    const task = await tx.task(Number(read.readId) as TaskId);
-    const result = task?.state.outcome?.status === 'completed' ? task.state.outcome.result as { entryId?: number } : undefined;
-    const entry = result?.entryId === undefined ? undefined : await tx.entry(result.entryId as EntryId);
-    if (!entry?.model?.some((message) => message.role === 'toolResult' && !message.isError)) throw new Error('当前会话的读取尚未成功完成，请重新读取后修改');
+    if (reads.missing?.some((item) => sameFilePath(item.path, canonical) && Number(item.readId) > Number(read.readId)) || !await completedRead(tx, read.readId)) throw new Error('当前会话的读取尚未成功完成，请重新读取后修改');
     return { kind: 'overwrite', path: canonical, identity, hash: read.hash, readId: read.readId };
   } finally { await file.close(); }
 }
@@ -44,7 +64,9 @@ async function originalIntent(args: JsonObject, env: ExecutionEnv, context: Cont
   return precondition ? precondition as FileIntent : { kind: 'create', path: await absoluteFilePath(args, env, context) };
 }
 async function verifyFile(file: FileHandle, intent: Exclude<FileIntent, { kind: 'create' }>, context: Context) {
-  const current = await stat(intent.path, { bigint: true });
+  let current;
+  try { current = await stat(intent.path, { bigint: true }); }
+  catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') throw conflict(); throw error; }
   if (`${current.dev}:${current.ino}` !== intent.identity || await identityOf(file) !== intent.identity || await hashFile(file, context) !== intent.hash) throw conflict();
 }
 async function validateFile(call: Readonly<RecoveryCall>, context: Context) {
@@ -54,7 +76,7 @@ async function validateFile(call: Readonly<RecoveryCall>, context: Context) {
     catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') return; throw error; }
     throw new Error('目标文件已存在，不能重试创建；请保留原文件并处理后重试，或停止本轮');
   }
-  const file = await open(intent.path, 'r');
+  const file = await openExistingFile(intent.path, 'r');
   try { await verifyFile(file, intent, context); }
   finally { await file.close(); }
 }
@@ -126,7 +148,7 @@ async function executeMutation(name: 'write' | 'edit', args: JsonObject, env: Ex
         }, context);
       } finally { await file.close(); }
     }
-    const file = await open(intent.path, 'r+');
+    const file = await openExistingFile(intent.path, 'r+');
     try {
       await verifyFile(file, intent, context);
       let content = String(args.content);

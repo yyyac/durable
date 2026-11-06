@@ -1,14 +1,15 @@
 import { createHash } from 'node:crypto';
 import { open, realpath, type FileHandle } from 'node:fs/promises';
-import { basename } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import type { Context } from '@earendil-works/chord/context';
 import { defineDoc } from '@earendil-works/pi-durable';
 import { FileError, LineScanner, type BinaryReader, type ExecutionEnv, type FileInfo } from '@earendil-works/pi-durable/env';
 
 export type FileVersion = { path: string; identity: string; hash: string; readId: string };
+export const sameFilePath = (left: string, right: string) => process.platform === 'win32' ? left.toLowerCase() === right.toLowerCase() : left === right;
 export const FileReadsDoc = defineDoc({
   kind: 'workbench.file-reads', version: 1, scope: 'conversation', history: 'latest', fork: 'initial',
-  initial: (): { items: FileVersion[] } => ({ items: [] }), checkpointWhen: () => true,
+  initial: (): { items: FileVersion[]; missing?: Array<{ path: string; readId: string; message: string }> } => ({ items: [], missing: [] }), checkpointWhen: () => true,
 });
 const queues = new Map<string, Promise<void>>();
 export async function withFileLock<T>(identity: string, operation: () => Promise<T>, context: Context) {
@@ -55,6 +56,7 @@ function failure(error: unknown, path: string) {
 
 export function versionedReadEnvironment(env: ExecutionEnv) {
   let version: Omit<FileVersion, 'readId'> | undefined;
+  let missing: string | undefined;
   const checked = new Proxy(env, {
     get(target, key) {
       if (key === 'openBinaryReader') return async (path: string, _options: unknown, context: Context) => {
@@ -136,11 +138,17 @@ export function versionedReadEnvironment(env: ExecutionEnv) {
             async close() { await opened.close(); },
           };
           return { ok: true, value: reader };
-        } catch (error) { await file?.close(); return { ok: false, error: failure(error, path) }; }
+        } catch (error) {
+          await file?.close();
+          if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+            try { missing = join(await realpath(dirname(path)), basename(path)); } catch { missing = path; }
+          }
+          return { ok: false, error: failure(error, path) };
+        }
       };
       const value = Reflect.get(target, key, target);
       return typeof value === 'function' ? value.bind(target) : value;
     },
   });
-  return { env: checked, version: () => version };
+  return { env: checked, version: () => version, missingPath: () => missing };
 }

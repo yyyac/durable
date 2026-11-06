@@ -6,7 +6,7 @@ import { ConversationsDoc } from './conversations.js';
 import { inspectDirectory, conversationDirectory } from './directories.js';
 import { WorkspacesDoc, checkConversationActive } from './workspaces.js';
 import { waitForToolBarrier } from './tool-recovery.js';
-import { FileReadsDoc, versionedReadEnvironment } from './file-versions.js';
+import { FileReadsDoc, versionedReadEnvironment, sameFilePath } from './file-versions.js';
 
 export const LocalToolsDoc = defineDoc({
   kind: 'workbench.local-tools', version: 1, scope: 'session',
@@ -44,12 +44,22 @@ export const readTool = {
     const cwd = await api.memo('working-directory', api.env.cwd, context);
     if (cwd !== api.env.cwd) throw new Error('工作目录已变更，请重新发起读取');
     const snapshot = versionedReadEnvironment(api.env);
-    const result = await read.execute(args, { ...api, env: snapshot.env }, context);
+    let result;
+    try { result = await read.execute(args, { ...api, env: snapshot.env }, context); }
+    catch (error) {
+      const missing = snapshot.missingPath();
+      if (missing) await api.commit(async (tx) => {
+        const reads = await tx.doc(FileReadsDoc, api.conversationId);
+        reads.missing = [...(reads.missing ?? []).filter((item) => !sameFilePath(item.path, missing)), { path: missing, readId: String(api.taskId), message: (error as Error).message }];
+      }, context);
+      throw error;
+    }
     const version = snapshot.version();
     if (!result.isError && version) await api.commit(async (tx) => {
       const reads = await tx.doc(FileReadsDoc, api.conversationId);
       reads.items = reads.items.filter((item) => item.identity !== version.identity && item.path !== version.path);
       reads.items.push({ ...version, readId: String(api.taskId) });
+      reads.missing = reads.missing?.filter((item) => !sameFilePath(item.path, version.path));
     }, context);
     return { ...result, details: { ...result.details, cwd } };
   }) satisfies typeof read.execute,

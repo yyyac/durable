@@ -1,4 +1,4 @@
-import { readFile, writeFile, mkdir, link, symlink, open } from 'node:fs/promises';
+import { readFile, writeFile, mkdir, link, symlink, open, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { test, expect } from './fixtures';
 import { configureModel } from './configure-model';
@@ -228,4 +228,22 @@ test('读取版本保护仍能完成大文件末行与 offset limit 读取，返
   tool(upstream, 'read', { path: 'ranges.txt', offset: 2, limit: -3 }); upstream.enqueue({ chunks: ['负数limit仍按原有切片语义读取'] });
   await send(page, '读取已有切片范围'); await expect(page.getByTestId('assistant-message').last()).toHaveText('负数limit仍按原有切片语义读取');
   expect(JSON.stringify(upstream.requests[3].messages)).toContain('二\\r\\n三');
+});
+
+test('读取后目标被删除时拒绝旧修改，模型读到不存在后才能按新文件创建', async ({ page, workbench, upstream }) => {
+  await page.goto(workbench.url); await configureModel(page, upstream.url);
+  const conversation = (await (await page.request.get(`${workbench.url}/api/conversations`)).json())[0];
+  const path = join(conversation.defaultDirectory, 'deleted.txt'); await writeFile(path, '删除前的版本');
+  await page.request.post(`${workbench.url}/api/local-tools/enable`); await page.reload();
+  tool(upstream, 'read', { path: 'deleted.txt' }); upstream.enqueue({ chunks: ['已知道原文件'] });
+  await send(page, '读取文件'); await expect(page.getByTestId('assistant-message').last()).toHaveText('已知道原文件');
+  await rm(path);
+  tool(upstream, 'write', { path: 'deleted.txt', content: '旧修改不能重建文件' }); upstream.enqueue({ chunks: ['删除也是冲突'] });
+  await send(page, '尝试旧版本修改'); await expect(page.getByTestId('assistant-message').last()).toHaveText('删除也是冲突');
+  await expect(readFile(path)).rejects.toMatchObject({ code: 'ENOENT' });
+  expect(JSON.stringify(upstream.requests[3].messages)).toContain('文件冲突');
+  tool(upstream, 'read', { path: 'deleted.txt' });
+  tool(upstream, 'write', { path: 'deleted.txt', content: '读到不存在后明确创建' }); upstream.enqueue({ chunks: ['按新文件处理完成'] });
+  await send(page, '重新读取并处理缺失文件'); await expect(page.getByTestId('assistant-message').last()).toHaveText('按新文件处理完成');
+  expect(await readFile(path, 'utf8')).toBe('读到不存在后明确创建');
 });

@@ -278,3 +278,30 @@ test('Windows 省略盘符的根相对路径即使实际存在也明确拒绝', 
     expect(await (await page.request.get(`${workbench.url}/api/workspaces`)).json()).toEqual([]);
   } finally { await rm(directory, { recursive: true, force: true }); }
 });
+
+test('已绑定目录移动后成为 junction 时重新添加实际目录仍复用原工作区', async ({ page, workbench, upstream }) => {
+  test.skip(process.platform !== 'win32', '验证真实 Windows junction');
+  const directory = join(workbench.dataDir, '原绑定项目');
+  const moved = join(workbench.dataDir, '项目实际新位置');
+  await mkdir(directory);
+  await writeFile(join(directory, 'shared.txt'), '移动后仍属于原工作区');
+  await page.goto(workbench.url);
+  await configureModel(page, upstream.url);
+  await addWorkspace(page, directory);
+  const originalUrl = page.url();
+  const [original] = await (await page.request.get(`${workbench.url}/api/workspaces`)).json();
+  await rename(directory, moved);
+  await symlink(moved, directory, 'junction');
+  await addWorkspace(page, moved);
+  await expect(page).not.toHaveURL(originalUrl);
+  expect(await (await page.request.get(`${workbench.url}/api/workspaces`)).json()).toEqual([original]);
+  const sessions = await (await page.request.get(`${workbench.url}/api/conversations`)).json();
+  expect(sessions.filter((item: { workspaceId?: string }) => item.workspaceId)).toHaveLength(2);
+  for (const item of sessions.filter((item: { workspaceId?: string }) => item.workspaceId)) expect(item.workspaceId).toBe(original.id);
+  upstream.enqueue({ chunks: [{ toolCall: { id: 'moved-workspace-read', name: 'read', arguments: '{"path":"shared.txt"}' } }] });
+  upstream.enqueue({ chunks: ['复用原工作区读取成功'] });
+  await page.getByRole('textbox', { name: '输入消息' }).fill('读取移动后的共享文件');
+  await page.getByRole('button', { name: '发送消息', exact: true }).click();
+  await expect(page.getByTestId('assistant-message').last()).toHaveText('复用原工作区读取成功');
+  expect(JSON.stringify(upstream.requests[1].messages)).toContain('移动后仍属于原工作区');
+});

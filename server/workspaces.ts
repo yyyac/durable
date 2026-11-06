@@ -37,8 +37,10 @@ export async function bindWorkspace(tx: Tx, path: unknown, trusted: unknown) {
   if (trusted !== true) throw new Error('请先确认本机工具访问说明');
   const directory = await existingDirectory(path);
   const index = await tx.doc(WorkspacesDoc);
-  const existing = index.items.find((item) => item.directory === directory);
-  if (existing) return requireActive(existing);
+  for (const workspace of index.items) {
+    const actual = await realpath(workspace.directory).catch(() => undefined);
+    if (workspace.directory === directory || actual === directory) return requireActive(workspace);
+  }
   const workspace: Workspace = { id: randomUUID(), name: basename(directory) || directory, directory, createdAt: Date.now() };
   index.items.unshift(workspace);
   return workspace;

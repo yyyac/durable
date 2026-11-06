@@ -87,9 +87,16 @@ test('工作区重新定位校验无效和实际目录占用，取消不改关�
     expect(response.status()).toBe(400);
   }
   if (process.platform === 'win32') {
+    const movedOccupied = join(workbench.dataDir, '已有工作区实际新位置');
+    await rename(occupied, movedOccupied);
+    await symlink(movedOccupied, occupied, 'junction');
     const alias = join(workbench.dataDir, 'occupied-alias');
     await symlink(occupied, alias, 'junction');
-    expect((await page.request.post(previewUrl, { data: { path: alias } })).status()).toBe(400);
+    for (const path of [movedOccupied, alias]) {
+      const response = await page.request.post(previewUrl, { data: { path } });
+      expect(response.status()).toBe(400);
+      expect((await response.json()).error).toContain('该目录已被其他工作区使用');
+    }
   }
   await page.goto(`${workbench.url}/conversations/${first.id}`);
   const dialog = await previewRelocation(page, target);

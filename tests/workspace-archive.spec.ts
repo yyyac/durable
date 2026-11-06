@@ -196,8 +196,9 @@ test('没有可见会话的归档工作区仍有独立恢复入口，目录丢�
   expect(upstream.requests).toHaveLength(0);
 });
 
-test('重新添加归档目录提示恢复原身份，恢复后可执行且保留会话各自的归档状态', async ({ page, workbench, upstream }) => {
+test('归档目录移动后成为 junction 再次添加仍提示恢复原身份，保留会话各自的归档状态', async ({ page, workbench, upstream }) => {
   const directory = join(workbench.dataDir, '恢复原项目');
+  const moved = join(workbench.dataDir, '归档项目实际新位置');
   const alias = join(workbench.dataDir, '项目别名');
   await mkdir(directory);
   await symlink(directory, alias, 'junction');
@@ -209,8 +210,10 @@ test('重新添加归档目录提示恢复原身份，恢复后可执行且保�
   await page.request.patch(`${workbench.url}/api/conversations/${second.id}`, { data: { title: '单独归档的旧会话' } });
   await page.request.patch(`${workbench.url}/api/conversations/${second.id}`, { data: { archived: true } });
   expect((await page.request.patch(`${workbench.url}/api/workspaces/${first.workspaceId}`, { data: { archived: true } })).ok()).toBe(true);
+  await rename(directory, moved);
+  await symlink(moved, directory, 'junction');
   const before = await (await page.request.get(`${workbench.url}/api/conversations?includeArchived=true`)).json();
-  for (const path of [directory, alias, ...(process.platform === 'win32' ? [directory.toUpperCase()] : [])]) {
+  for (const path of [moved, directory, alias, ...(process.platform === 'win32' ? [directory.toUpperCase()] : [])]) {
     const response = await page.request.post(`${workbench.url}/api/workspaces`, { data: { path, trusted: true } });
     expect(response.status()).toBe(400);
     expect(await response.json()).toMatchObject({ workspaceId: first.workspaceId, error: expect.stringContaining('工作区已归档') });
@@ -220,7 +223,7 @@ test('重新添加归档目录提示恢复原身份，恢复后可执行且保�
   await page.getByRole('button', { name: '选择工作目录', exact: true }).click();
   await page.getByRole('menuitem', { name: '填写文件夹路径…' }).click();
   const dialog = page.getByRole('dialog', { name: '添加工作区' });
-  await dialog.getByRole('textbox', { name: '文件夹绝对路径' }).fill(directory);
+  await dialog.getByRole('textbox', { name: '文件夹绝对路径' }).fill(moved);
   await dialog.getByRole('checkbox', { name: '我已了解并信任此工作区的本机工具访问' }).check();
   await dialog.getByRole('button', { name: '添加并开始会话' }).click();
   await expect(dialog.getByRole('alert')).toContainText('工作区已归档');

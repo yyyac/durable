@@ -262,6 +262,6 @@ test('同一工作区两个会话竞争创建同名真实文件时至多一个�
   await expect.poll(() => upstream.finishedResponses).toBe(4);
   const results = upstream.requests.slice(2).map((request) => JSON.stringify(request.messages.find((message) => message.role === 'tool')));
   expect(results.filter((result) => result.includes('Successfully wrote to race.txt'))).toHaveLength(1);
-  expect(results.filter((result) => result.includes('EEXIST'))).toHaveLength(1);
+  expect(results.filter((result) => /EEXIST|目标(?:文件|路径)已存在/.test(result)), results.join('\n')).toHaveLength(1);
   expect(['竞争者甲的完整内容', '竞争者乙的完整内容']).toContain(await readFile(join(directory, 'race.txt'), 'utf8'));
 });

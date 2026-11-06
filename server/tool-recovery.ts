@@ -14,8 +14,13 @@ import { requireRunCapacity } from './run-admission.js';
 import { lstat } from 'node:fs/promises';
 import { resolve } from 'node:path';
 
-export type RecoveryOperation = (args: JsonObject, env: ExecutionEnv, output: (text: string) => Promise<void>, context: Context) => Promise<ToolExecutionResult>;
+export type RecoveryOperation = (args: JsonObject, env: ExecutionEnv, output: (text: string) => Promise<void>, context: Context, precondition?: JsonObject) => Promise<ToolExecutionResult>;
+type RecoveryPlan = {
+  prepare?: (tx: Tx, conversationId: ConversationId, args: JsonObject, env: ExecutionEnv, context: Context) => Promise<JsonObject>;
+  validate?: (call: Readonly<RecoveryCall>, context: Context) => Promise<void>;
+};
 export const recoveryOperations = new Map<string, RecoveryOperation>();
+const recoveryPlans = new Map<string, RecoveryPlan>();
 const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value));
 function withDirectory(result: ToolExecutionResult, cwd: string, output: string): ToolExecutionResult {
   const details = result.details && typeof result.details === 'object' && !Array.isArray(result.details) ? result.details : {};
@@ -48,8 +53,9 @@ export async function waitForToolBarrier(reader: DocumentReader & DocumentObserv
   await checkConversationActive(reader, conversationId, context);
 }
 
-export function recoverableTool<T extends ToolRegistration>(tool: T, operation: RecoveryOperation): T {
+export function recoverableTool<T extends ToolRegistration>(tool: T, operation: RecoveryOperation, plan: RecoveryPlan = {}): T {
   recoveryOperations.set(tool.name, operation);
+  recoveryPlans.set(tool.name, plan);
   return {
     ...tool, replay: 'unsafe', executionMode: 'sequential',
     async execute(args: JsonObject, api, context) {
@@ -57,7 +63,7 @@ export function recoverableTool<T extends ToolRegistration>(tool: T, operation: 
       await waitForToolBarrier(api, api.conversationId, task?.owner, context);
       if (!api.env) throw new Error('工作目录不可用，无法执行本机工具');
       const key = String(api.taskId);
-      await api.commit(async (tx) => {
+      const precondition = await api.commit(async (tx) => {
         await requireBoundDirectory(tx, api.conversationId, api.env!.cwd);
         const native = await tx.task(api.taskId);
         const input = native?.input as { assistant?: number } | undefined;
@@ -66,7 +72,9 @@ export function recoverableTool<T extends ToolRegistration>(tool: T, operation: 
         const messageIndex = entry?.model?.findIndex((message) => message.role === 'assistant' && message.content.some((block) => block.type === 'toolCall' && block.id === api.callId)) ?? -1;
         if (messageIndex < 0) throw new Error('工具调用来源不存在');
         const calls = await tx.doc(ToolCallsDoc, api.conversationId);
-        calls.items.push({ key, sourceId: `${input.assistant}:${messageIndex}:${api.callId}`, nativeTaskId: api.taskId, assistantEntry: input.assistant, runId: native.owner, callId: api.callId, name: tool.name, args: clone(args), cwd: api.env!.cwd, status: 'executing', attempt: 0, output: '' });
+        const precondition = await plan.prepare?.(tx, api.conversationId, args, api.env!, context);
+        calls.items.push({ key, sourceId: `${input.assistant}:${messageIndex}:${api.callId}`, nativeTaskId: api.taskId, assistantEntry: input.assistant, runId: native.owner, callId: api.callId, name: tool.name, args: clone(args), cwd: api.env!.cwd, status: 'executing', attempt: 0, output: '', ...(precondition ? { precondition } : {}) });
+        return precondition ? clone(precondition) : undefined;
       }, context);
       let output = '';
       let result: ToolExecutionResult;
@@ -79,7 +87,7 @@ export function recoverableTool<T extends ToolRegistration>(tool: T, operation: 
             if (call?.status !== 'executing' || call.attempt !== 0) throw new Error('本轮工具调用已结束');
             call.output = output;
           }, context);
-        }, context);
+        }, context, precondition);
       } catch (error) {
         context.abortSignal?.throwIfAborted();
         result = { isError: true, output: output ? [{ type: 'text', text: output }] : [], diagnostics: [{ severity: 'error', code: 'tool_error', message: (error as Error).message }] };
@@ -102,7 +110,9 @@ async function validateOriginalDirectory(tx: Tx, conversationId: ConversationId,
   const cwd = conversationDirectory(item, workspaces.items);
   if (cwd !== call.cwd) throw new Error('原工作目录关联已变更，不能重试旧调用');
   if (!(await inspectDirectory(cwd)).available) throw new Error('原工作目录不可用，不能重试');
-  if (call.name === 'write' && typeof call.args.path === 'string') {
+  const validate = recoveryPlans.get(call.name)?.validate;
+  if (validate) await validate(call, BACKGROUND_CONTEXT);
+  else if (call.name === 'write' && typeof call.args.path === 'string') {
     let exists = true;
     try { await lstat(resolve(cwd, call.args.path)); }
     catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') exists = false; else throw error; }
@@ -137,7 +147,7 @@ export const ToolRetryTask = defineTask<{ key: string; attempt: number }, { phas
             call.output = output;
             return undefined;
           }, context);
-        }, context);
+        }, context, original.precondition);
       } catch (error) {
         context.abortSignal?.throwIfAborted();
         result = { isError: true, output: output ? [{ type: 'text', text: output }] : [], diagnostics: [{ severity: 'error', code: 'tool_error', message: (error as Error).message }] };

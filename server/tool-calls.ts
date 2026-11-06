@@ -5,6 +5,7 @@ export type RecoveryCall = {
   callId: string; name: string; args: JsonObject; cwd: string;
   status: 'executing' | 'awaiting' | 'retrying' | 'stopping' | 'done' | 'stopped';
   attempt: number; retryTaskId?: number; output: string; result?: JsonObject;
+  precondition?: JsonObject;
 };
 export const ToolCallsDoc = defineDoc({
   kind: 'workbench.tool-calls', version: 1, scope: 'conversation', history: 'latest', fork: 'initial',

@@ -3,7 +3,7 @@ import { open, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { Workbench } from './fixtures';
 
-export function crashAfterFileEffect(workbench: Workbench, directory: string, name: string) {
+export function crashAfterFileEffect(workbench: Workbench, directory: string, name: string, previous?: Buffer) {
   let claimed = false;
   let observer: ReturnType<typeof watch>;
   let timer: ReturnType<typeof setTimeout>;
@@ -16,13 +16,16 @@ export function crashAfterFileEffect(workbench: Workbench, directory: string, na
         const info = await stat(path);
         if (info.size === 0 || claimed) return;
         const reader = await open(path, 'r');
-        const first = Buffer.alloc(1);
-        try { if ((await reader.read(first, 0, 1, 0)).bytesRead !== 1 || claimed) return; }
+        const first = Buffer.alloc(Math.min(64, info.size));
+        try {
+          if ((await reader.read(first, 0, first.length, 0)).bytesRead !== first.length || claimed) return;
+          if (previous && info.size === previous.length && first.equals(previous.subarray(0, first.length))) return;
+        }
         finally { await reader.close(); }
         if (claimed) return;
         claimed = true;
-        await workbench.crash();
         clearTimeout(timer);
+        await workbench.crash();
         resolve((await stat(path)).size);
       })().catch(reject);
     });

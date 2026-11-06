@@ -4,7 +4,7 @@ import { NodeExecutionEnv } from '@earendil-works/pi-durable/env/node';
 import type { Context } from '@earendil-works/chord/context';
 import { ConversationsDoc } from './conversations.js';
 import { inspectDirectory, conversationDirectory } from './directories.js';
-import { WorkspacesDoc } from './workspaces.js';
+import { WorkspacesDoc, checkConversationActive } from './workspaces.js';
 import { waitForToolBarrier } from './tool-recovery.js';
 
 export const LocalToolsDoc = defineDoc({
@@ -15,12 +15,13 @@ export const LocalToolsDoc = defineDoc({
 export async function localToolsEnabled(reader: DocumentReader, context: Context, conversationId?: number) {
   if (conversationId !== undefined) {
     const item = (await reader.snapshot(ConversationsDoc, context))?.items.find((item) => item.id === String(conversationId));
-    if (item?.workspaceId) return (await reader.snapshot(WorkspacesDoc, context))?.items.some((workspace) => workspace.id === item.workspaceId) === true;
+    if (item?.workspaceId) return (await reader.snapshot(WorkspacesDoc, context))?.items.some((workspace) => workspace.id === item.workspaceId && !workspace.archived) === true;
   }
   return (await reader.snapshot(LocalToolsDoc, context))?.enabled === true;
 }
 
 export async function localEnvironment(target: EnvTarget, context: Context) {
+  await checkConversationActive(target.read, target.conversationId, context);
   if (!await localToolsEnabled(target.read, context, target.conversationId)) return undefined;
   const index = await target.read.snapshot(ConversationsDoc, context);
   const item = index?.items.find((item) => item.id === String(target.conversationId));

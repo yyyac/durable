@@ -28,3 +28,7 @@
 .groupCreate:hover { background: #0000000a; }
 .sessions { padding-left: 18px; }
 .sessions button { font-size: 13px; }
+.restore { padding: 7px 12px; border: 1px solid #dadddf; border-radius: 7px; font-size: 13px; }
+.archiveNotice { display: flex; align-items: center; gap: 12px; padding: 8px 0; margin-bottom: 12px; color: #73777e; font-size: 13px; }
+.archiveNotice p { flex: 1; margin: 0; }
+.archiveNotice button { padding: 6px 10px; border: 1px solid #dadddf; border-radius: 7px; color: #60656d; font-size: 13px; }

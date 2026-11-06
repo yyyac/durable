@@ -42,6 +42,7 @@ export type ContextUsage = { tokens: number; estimated: boolean; model?: { provi
 export interface ConversationState {
   id: string;
   directory?: WorkingDirectory;
+  workspaces?: Workspace[];
   messages: ChatMessage[];
   generation: ChatMessage | null;
   busy: boolean;
@@ -60,6 +61,6 @@ export type ConversationSummary = {
   awaitingConfirmation?: boolean;
 };
 
-export type Workspace = { id: string; name: string; directory: string; createdAt: number };
+export type Workspace = { id: string; name: string; directory: string; createdAt: number; archived?: boolean };
 
 export type WorkingDirectory = { path: string; available: boolean };

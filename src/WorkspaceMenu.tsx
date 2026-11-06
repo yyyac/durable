@@ -1,11 +1,11 @@
 import { useState } from 'react';
 import * as Menu from '@radix-ui/react-dropdown-menu';
 import * as Dialog from '@radix-ui/react-dialog';
-import { MoreHorizontal, Pencil, X } from 'lucide-react';
+import { Archive, MoreHorizontal, Pencil, X } from 'lucide-react';
 import type { Workspace } from './types';
 import styles from './ConversationManagement.module.css';
 
-export function WorkspaceMenu({ workspace, onRename }: { workspace: Workspace; onRename: (id: string, name: string) => Promise<void> }) {
+export function WorkspaceMenu({ workspace, onRename, onArchive }: { workspace: Workspace; onRename: (id: string, name: string) => Promise<void>; onArchive: (id: string) => Promise<void> }) {
   const [open, setOpen] = useState(false);
   const [name, setName] = useState('');
   const [saving, setSaving] = useState(false);
@@ -14,8 +14,10 @@ export function WorkspaceMenu({ workspace, onRename }: { workspace: Workspace; o
     <Menu.Root><Menu.Trigger className={styles.menuTrigger} aria-label={`${workspace.name}的工作区菜单`}><MoreHorizontal size={16} /></Menu.Trigger>
       <Menu.Portal><Menu.Content className={styles.menu} align="start" sideOffset={4} onCloseAutoFocus={(event) => { if (open) event.preventDefault(); }}>
         <Menu.Item className={styles.menuItem} onSelect={() => { setName(workspace.name); setError(''); setOpen(true); }}><Pencil size={15} />重命名</Menu.Item>
+        <Menu.Item className={styles.menuItem} onSelect={() => { setError(''); void onArchive(workspace.id).catch((error: Error) => setError(error.message)); }}><Archive size={15} />归档工作区</Menu.Item>
       </Menu.Content></Menu.Portal>
     </Menu.Root>
+    {error && !open && <span role="alert" className={styles.error}>{error}</span>}
     <Dialog.Portal><Dialog.Overlay className={styles.overlay} /><Dialog.Content className={styles.renameDialog}>
       <Dialog.Title>重命名工作区</Dialog.Title><Dialog.Description>修改显示名称，目录和会话归属保持不变。</Dialog.Description>
       <form onSubmit={async (event) => {

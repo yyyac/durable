@@ -10,7 +10,7 @@ import { listConversations, titleConversation, renameConversation, archiveConver
 import { openLocalDirectory } from './directories.js';
 import { ToolCallsDoc } from './tool-calls.js';
 import { confirmToolCall } from './tool-recovery.js';
-import { WorkspacesDoc, renameWorkspace } from './workspaces.js';
+import { ArchivedWorkspace, WorkspacesDoc, renameWorkspace, setWorkspaceArchived } from './workspaces.js';
 import { RunCapacityReached } from './run-admission.js';
 import { selectLocalDirectory } from './folder-picker.js';
 
@@ -60,13 +60,16 @@ app.post('/api/workspaces', async (c) => {
     const conversation = await runtime.createConversation({ path: input.path, trusted: input.trusted });
     const item = (await listConversations(runtime.harness)).find((item) => item.id === String(conversation.id))!;
     return c.json({ conversation: item }, 201);
-  } catch (error) { return c.json({ error: (error as Error).message }, 400); }
+  } catch (error) { return c.json({ error: (error as Error).message, ...(error instanceof ArchivedWorkspace ? { workspaceId: error.workspaceId } : {}) }, 400); }
 });
 app.patch('/api/workspaces/:id', async (c) => {
   try {
     const input = await c.req.json();
-    await runtime.harness.commit((tx) => renameWorkspace(tx, c.req.param('id'), input.name), context);
-    return c.json({ ok: true });
+    const directory = await runtime.harness.commit(async (tx) => {
+      if (typeof input.archived === 'boolean') return setWorkspaceArchived(tx, c.req.param('id'), input.archived);
+      else await renameWorkspace(tx, c.req.param('id'), input.name);
+    }, context);
+    return c.json({ ok: true, ...(directory ? { directory } : {}) });
   } catch (error) { return c.json({ error: (error as Error).message }, 400); }
 });
 app.patch('/api/conversations/:id', async (c) => {
@@ -137,14 +140,16 @@ app.get('/api/conversations/:id/events', async (c) => {
   return streamSSE(c, async (stream) => {
     const watch = await conversation.watch(context);
     const toolWatch = await runtime.harness.watchDoc(ToolCallsDoc, conversation.id, context);
-    stream.onAbort(() => { void watch.stop(); void toolWatch?.stop(); });
+    const workspaceWatch = await runtime.harness.watchDoc(WorkspacesDoc, context);
+    stream.onAbort(() => { void watch.stop(); void toolWatch?.stop(); void workspaceWatch?.stop(); });
     try {
       const entries = new Map((await runtime.olderEntries(conversation, watch.value)).map((entry) => [entry.id, entry]));
       const publish = async (view: typeof watch.value) => {
         for (const entry of view.entries) entries.set(entry.id, entry);
         const modelContext = await conversation.context(context, { at: view.entries.at(-1)?.id ?? view.before });
         const calls = (await runtime.harness.snapshot(ToolCallsDoc, conversation.id, context))?.items ?? [];
-        await stream.writeSSE({ event: 'state', data: JSON.stringify({ ...stateFrom(view, [...entries.values()], modelContext.messages, await runtime.thinking.read(conversation.id), calls), directory: await runtime.directory(conversation) }) });
+        const workspaces = (await runtime.harness.snapshot(WorkspacesDoc, context))?.items ?? [];
+        await stream.writeSSE({ event: 'state', data: JSON.stringify({ ...stateFrom(view, [...entries.values()], modelContext.messages, await runtime.thinking.read(conversation.id), calls), directory: await runtime.directory(conversation), workspaces }) });
       };
       let latestView = watch.value;
       let pending = Promise.resolve();
@@ -152,8 +157,9 @@ app.get('/api/conversations/:id/events', async (c) => {
       await publish(watch.value);
       watch.start(async (call) => { if (call.kind === 'value') { latestView = call.value; schedulePublish(); } });
       toolWatch?.start(async () => { schedulePublish(); });
+      workspaceWatch?.start(async () => { schedulePublish(); });
       await watch.closed;
-    } finally { await watch.stop(); await toolWatch?.stop(); }
+    } finally { await watch.stop(); await toolWatch?.stop(); await workspaceWatch?.stop(); }
   });
 });
 app.use('/*', serveStatic({ root: './dist' }));

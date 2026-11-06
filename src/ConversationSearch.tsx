@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
 import { Search, X } from 'lucide-react';
-import type { ConversationSummary } from './types';
+import type { ConversationSummary, Workspace } from './types';
 import styles from './ConversationManagement.module.css';
 
-export function ConversationSearch({ conversations, onSelect }: { conversations: ConversationSummary[]; onSelect: (id: string) => void }) {
+export function ConversationSearch({ conversations, workspaces, onSelect }: { conversations: ConversationSummary[]; workspaces: Workspace[]; onSelect: (id: string) => void }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const resultsRef = useRef<HTMLDivElement>(null);
@@ -29,7 +29,11 @@ export function ConversationSearch({ conversations, onSelect }: { conversations:
     <Dialog.Portal><Dialog.Overlay className={styles.overlay} /><Dialog.Content className={styles.searchDialog}>
       <Dialog.Title>搜索会话</Dialog.Title><Dialog.Description>按会话名称查找，包含已归档的记录。</Dialog.Description>
       <input className={styles.searchInput} aria-label="搜索会话" placeholder="搜索会话…" value={query} onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => { if (event.key === 'ArrowDown') { event.preventDefault(); resultsRef.current?.querySelector('button')?.focus(); } }} />
-      <div className={styles.searchResults} ref={resultsRef}>{matches.length ? matches.map((conversation) => <button key={conversation.id} onKeyDown={move} onClick={() => { onSelect(conversation.id); setOpen(false); }}><span>{conversation.title}</span>{conversation.archived && <span className={styles.archived}> 已归档</span>}</button>) : <p>没有找到匹配的会话</p>}</div>
+      <div className={styles.searchResults} ref={resultsRef}>{matches.length ? matches.map((conversation) => {
+        const workspace = workspaces.find((item) => item.id === conversation.workspaceId);
+        const archived = [conversation.archived ? '已归档' : '', workspace?.archived ? '工作区已归档' : ''].filter(Boolean).join(' · ');
+        return <button key={conversation.id} onKeyDown={move} onClick={() => { onSelect(conversation.id); setOpen(false); }}><span>{conversation.title}{workspace && <small className={styles.searchWorkspace} title={workspace.directory}>{workspace.name} · {workspace.directory}</small>}</span>{archived && <span className={styles.archived}> {archived}</span>}</button>;
+      }) : <p>没有找到匹配的会话</p>}</div>
       <footer className={styles.searchFooter}>↑ ↓ 选择 · Enter 打开 · Esc 关闭</footer>
       <Dialog.Close asChild><button className={styles.close} aria-label="关闭搜索"><X size={18} /></button></Dialog.Close>
     </Dialog.Content></Dialog.Portal>

@@ -9,6 +9,7 @@ import { streamSSE } from 'hono/streaming';
 import { listConversations, titleConversation, renameConversation, archiveConversation } from './conversations.js';
 import { openLocalDirectory } from './directories.js';
 import { WorkspacesDoc, renameWorkspace } from './workspaces.js';
+import { selectLocalDirectory } from './folder-picker.js';
 
 const app = new Hono();
 const settings = new SettingsStore(resolve(process.env.WORKBENCH_DATA_DIR ?? '.data'));
@@ -42,6 +43,10 @@ app.post('/api/conversations', async (c) => {
   } catch (error) { return c.json({ error: (error as Error).message }, 400); }
 });
 app.get('/api/workspaces', async (c) => c.json((await runtime.harness.snapshot(WorkspacesDoc, context))?.items ?? []));
+app.post('/api/directories/select', async (c) => {
+  try { return c.json({ path: await selectLocalDirectory() }); }
+  catch (error) { return c.json({ error: (error as Error).message }, 400); }
+});
 app.post('/api/workspaces', async (c) => {
   try {
     const input = await c.req.json();

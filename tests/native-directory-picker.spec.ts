@@ -1,0 +1,38 @@
+import { mkdir, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
+import { test, expect } from './fixtures';
+import { configureModel } from './configure-model';
+
+test('目录选择器同时提供系统选择和手填入口，取消后保留草稿并可通过正式路径读取文件', async ({ page, workbench, upstream }) => {
+  const directory = join(workbench.dataDir, "已有文件夹 'quoted' $data");
+  await mkdir(directory);
+  await writeFile(join(directory, 'actual.txt'), '通过正式目录入口读取的真实文件');
+  await page.goto(workbench.url);
+  await configureModel(page, upstream.url);
+  const originalUrl = page.url();
+  const original = await (await page.request.get(`${workbench.url}/api/conversations`)).json();
+  await page.getByRole('textbox', { name: '输入消息' }).fill('选择目录前尚未发送的草稿');
+  await page.getByRole('button', { name: '选择工作目录', exact: true }).click();
+  await expect(page.getByRole('menuitem', { name: '选择文件夹…', exact: true })).toBeVisible();
+  await page.getByRole('menuitem', { name: '填写文件夹路径…', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: '添加工作区' });
+  await dialog.getByRole('textbox', { name: '文件夹绝对路径' }).fill(directory);
+  await dialog.getByRole('button', { name: '取消', exact: true }).click();
+  await expect(page.getByRole('textbox', { name: '输入消息' })).toHaveValue('选择目录前尚未发送的草稿');
+  expect(page.url()).toBe(originalUrl);
+  expect(await (await page.request.get(`${workbench.url}/api/conversations`)).json()).toEqual(original);
+  expect(await (await page.request.get(`${workbench.url}/api/workspaces`)).json()).toEqual([]);
+  await page.getByRole('button', { name: '选择工作目录', exact: true }).click();
+  await page.getByRole('menuitem', { name: '填写文件夹路径…', exact: true }).click();
+  await dialog.getByRole('textbox', { name: '文件夹绝对路径' }).fill(directory);
+  await expect(dialog.getByRole('button', { name: '添加并开始会话', exact: true })).toBeDisabled();
+  await dialog.getByRole('checkbox', { name: '我已了解并信任此工作区的本机工具访问' }).check();
+  await dialog.getByRole('button', { name: '添加并开始会话', exact: true }).click();
+  await expect(dialog).not.toBeVisible();
+  upstream.enqueue({ chunks: [{ toolCall: { id: 'chosen-folder-read', name: 'read', arguments: '{"path":"actual.txt"}' } }] });
+  upstream.enqueue({ chunks: ['已完成正式工作区读取'] });
+  await page.getByRole('textbox', { name: '输入消息' }).fill('读取选择目录内的文件');
+  await page.getByRole('button', { name: '发送消息', exact: true }).click();
+  await expect(page.getByTestId('assistant-message').last()).toHaveText('已完成正式工作区读取');
+  expect(JSON.stringify(upstream.requests[1].messages)).toContain('通过正式目录入口读取的真实文件');
+});

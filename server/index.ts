@@ -4,10 +4,12 @@ import { serveStatic } from '@hono/node-server/serve-static';
 import { resolve } from 'node:path';
 import { SettingsStore } from './settings.js';
 import { Runtime, context, stateFrom } from './runtime.js';
-import { ConversationBusy } from '@earendil-works/pi-durable';
+import { ConversationBusy, type ConversationId } from '@earendil-works/pi-durable';
 import { streamSSE } from 'hono/streaming';
 import { listConversations, titleConversation, renameConversation, archiveConversation } from './conversations.js';
 import { openLocalDirectory } from './directories.js';
+import { ToolCallsDoc } from './tool-calls.js';
+import { confirmToolCall } from './tool-recovery.js';
 import { WorkspacesDoc, renameWorkspace } from './workspaces.js';
 import { RunCapacityReached } from './run-admission.js';
 import { selectLocalDirectory } from './folder-picker.js';
@@ -32,7 +34,10 @@ app.put('/api/settings/selection', async (c) => {
   catch (error) { return c.json({ error: (error as Error).message }, 400); }
 });
 app.get('/api/conversation', (c) => c.json({ id: String(runtime.root.id) }));
-app.get('/api/conversations', async (c) => c.json(await listConversations(runtime.harness, c.req.query('includeArchived') === 'true')));
+app.get('/api/conversations', async (c) => {
+  const items = await listConversations(runtime.harness, c.req.query('includeArchived') === 'true');
+  return c.json(await Promise.all(items.map(async (item) => ({ ...item, awaitingConfirmation: (await runtime.harness.snapshot(ToolCallsDoc, Number(item.id) as ConversationId, context))?.items.some((call) => call.status === 'awaiting') ?? false }))));
+});
 app.post('/api/conversations', async (c) => {
   try {
     const body = await c.req.text();
@@ -104,6 +109,22 @@ app.post('/api/conversations/:id/stop', async (c) => {
     return c.json({ ok: true });
   } catch (error) { return c.json({ error: (error as Error).message }, 400); }
 });
+app.post('/api/conversations/:id/tools/:key/stop', async (c) => {
+  try {
+    const input = await c.req.json();
+    if (!Number.isSafeInteger(input.attempt)) throw new Error('确认代次无效');
+    await runtime.stop(await runtime.conversation(c.req.param('id')), { key: c.req.param('key'), attempt: input.attempt });
+    return c.json({ ok: true });
+  } catch (error) { return c.json({ error: (error as Error).message }, 409); }
+});
+app.post('/api/conversations/:id/tools/:key/retry', async (c) => {
+  try {
+    const input = await c.req.json();
+    if (!Number.isSafeInteger(input.attempt) || input.attempt < 0) throw new Error('确认代次无效');
+    const conversation = await runtime.conversation(c.req.param('id'));
+    return c.json(await confirmToolCall(runtime.harness, conversation.id, c.req.param('key'), input.attempt, context), 202);
+  } catch (error) { return c.json({ error: (error as Error).message }, 409); }
+});
 app.post('/api/conversations/:id/directory/open', async (c) => {
   try {
     const conversation = await runtime.conversation(c.req.param('id'));
@@ -115,18 +136,24 @@ app.get('/api/conversations/:id/events', async (c) => {
   const conversation = await runtime.conversation(c.req.param('id'));
   return streamSSE(c, async (stream) => {
     const watch = await conversation.watch(context);
-    stream.onAbort(() => { void watch.stop(); });
+    const toolWatch = await runtime.harness.watchDoc(ToolCallsDoc, conversation.id, context);
+    stream.onAbort(() => { void watch.stop(); void toolWatch?.stop(); });
     try {
       const entries = new Map((await runtime.olderEntries(conversation, watch.value)).map((entry) => [entry.id, entry]));
       const publish = async (view: typeof watch.value) => {
         for (const entry of view.entries) entries.set(entry.id, entry);
         const modelContext = await conversation.context(context, { at: view.entries.at(-1)?.id ?? view.before });
-        await stream.writeSSE({ event: 'state', data: JSON.stringify({ ...stateFrom(view, [...entries.values()], modelContext.messages, await runtime.thinking.read(conversation.id)), directory: await runtime.directory(conversation) }) });
+        const calls = (await runtime.harness.snapshot(ToolCallsDoc, conversation.id, context))?.items ?? [];
+        await stream.writeSSE({ event: 'state', data: JSON.stringify({ ...stateFrom(view, [...entries.values()], modelContext.messages, await runtime.thinking.read(conversation.id), calls), directory: await runtime.directory(conversation) }) });
       };
+      let latestView = watch.value;
+      let pending = Promise.resolve();
+      const schedulePublish = () => { pending = pending.then(() => publish(latestView)).catch(() => { void watch.stop(); }); };
       await publish(watch.value);
-      watch.start(async (call) => { if (call.kind === 'value') await publish(call.value); });
+      watch.start(async (call) => { if (call.kind === 'value') { latestView = call.value; schedulePublish(); } });
+      toolWatch?.start(async () => { schedulePublish(); });
       await watch.closed;
-    } finally { await watch.stop(); }
+    } finally { await watch.stop(); await toolWatch?.stop(); }
   });
 });
 app.use('/*', serveStatic({ root: './dist' }));

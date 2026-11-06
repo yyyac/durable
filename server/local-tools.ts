@@ -5,6 +5,7 @@ import type { Context } from '@earendil-works/chord/context';
 import { ConversationsDoc } from './conversations.js';
 import { inspectDirectory, conversationDirectory } from './directories.js';
 import { WorkspacesDoc } from './workspaces.js';
+import { waitForToolBarrier } from './tool-recovery.js';
 
 export const LocalToolsDoc = defineDoc({
   kind: 'workbench.local-tools', version: 1, scope: 'session',
@@ -34,6 +35,8 @@ export const readTool = {
   ...read,
   replay: 'safe' as const,
   execute: (async (args, api, context) => {
+    const task = await api.getTask(api.taskId, context);
+    await waitForToolBarrier(api, api.conversationId, task?.owner, context);
     if (!await localToolsEnabled(api, context, api.conversationId)) throw new Error('尚未启用本机工具');
     if (!api.env) throw new Error('工作目录不可用，无法读取文件');
     const cwd = await api.memo('working-directory', api.env.cwd, context);

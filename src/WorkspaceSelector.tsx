@@ -52,7 +52,7 @@ export function WorkspaceSelector({ workspaces, workspaceId, defaultDirectory, d
         finally { setSaving(false); }
       }}>
         <label className={styles.field}>文件夹绝对路径<input value={path} onChange={(event) => setPath(event.target.value)} required autoFocus /></label>
-        <p>本机工具使用后端进程所拥有的用户权限，可读取本机文件。工作目录仅是相对路径的起点，并非目录沙箱，工具也可能访问目录之外的文件。</p>
+        <p>本机工具使用后端进程所拥有的用户权限，可读取和创建本机文件，同名文件不会被覆盖。正常调用直接执行，中断的写入须逐次确认后重试。工作目录仅是相对路径的起点，并非目录沙箱，工具也可能访问目录之外的文件。</p>
         <label className={styles.consent}><input type="checkbox" checked={trusted} onChange={(event) => setTrusted(event.target.checked)} />我已了解并信任此工作区的本机工具访问</label>
         {error && <p role="alert">{error}</p>}
         <div className={notice.actions}><Dialog.Close asChild><button type="button" disabled={saving}>取消</button></Dialog.Close><button className={notice.confirm} type="submit" disabled={saving || !trusted}>添加并开始会话</button></div>

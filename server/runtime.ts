@@ -16,6 +16,9 @@ import { ThinkingClock, timingKey, type ThinkingTimings } from './thinking-timin
 import { allocateDefaultDirectory, inspectDirectory, conversationDirectory } from './directories.js';
 import { WorkspacesDoc, bindWorkspace, requireWorkspace } from './workspaces.js';
 import { LocalToolsDoc, localEnvironment, localToolsEnabled, readTool } from './local-tools.js';
+import { writeTool } from './file-writing.js';
+import { ToolCallsDoc, hasUnfinishedCalls, unfinished, type RecoveryCall } from './tool-calls.js';
+import { recoveryModels, reconcileToolCalls, stopToolCalls, ToolRetryTask } from './tool-recovery.js';
 import { CAPACITY_ENTRY_KIND, limitRecoveredRuns, RECOVERY_CAPACITY_MESSAGE, requireRunCapacity, stoppedForCapacity } from './run-admission.js';
 
 export const context = BACKGROUND_CONTEXT;
@@ -64,7 +67,7 @@ function displayMessage(id: string, message: Message, taskId: number | undefined
   return { id, role: message.role, content, timestamp: message.timestamp, ...(message.role === 'assistant' ? { stopReason: message.stopReason, errorMessage: readableFailure(message.errorMessage) } : {}) };
 }
 
-export function stateFrom(view: ConversationView, entries: readonly EntryRecord[], modelContext: readonly Message[], timings: ThinkingTimings = { blocks: {} }): ConversationState {
+export function stateFrom(view: ConversationView, entries: readonly EntryRecord[], modelContext: readonly Message[], timings: ThinkingTimings = { blocks: {} }, calls: readonly RecoveryCall[] = []): ConversationState {
   const live = view.docs['pi.live'] as { run?: { taskId: number }; generation?: { message?: Message }; tools?: Array<{ callId: string; name: string; status: 'pending' | 'running' | 'done'; output?: string; details?: { cwd?: string } }>; runFailure?: { taskId: number; reason: string; detail?: string } } | undefined;
   const tools = new Map<string, ToolCallState>();
   const latestCalls = new Map<string, string>();
@@ -89,6 +92,14 @@ export function stateFrom(view: ConversationView, entries: readonly EntryRecord[
     const tool = id && tools.get(id);
     if (tool && tool.status === 'pending') tools.set(tool.id, { ...tool, status: slot.status === 'done' ? 'completed' : slot.status, output: slot.output ?? '', cwd: slot.details?.cwd });
   }
+  for (const call of calls) {
+    const tool = tools.get(call.sourceId);
+    if (!tool) continue;
+    const result = call.result as { output?: Array<{ type: string; text?: string }>; isError?: boolean; diagnostics?: Array<{ message: string }> } | undefined;
+    const status = call.status === 'executing' ? 'running' : call.status === 'done' ? result?.isError ? 'failed' : 'completed' : call.status;
+    const output = result ? [...(result.output ?? []).flatMap((block) => block.text ? [block.text] : []), ...(result.diagnostics ?? []).map((item) => item.message)].join('\n') : call.output;
+    tools.set(call.sourceId, { ...tool, arguments: call.args, cwd: call.cwd, status, output, recovery: { key: call.key, attempt: call.attempt } });
+  }
   const usage = estimateContextTokens(modelContext);
   const usageMessage = usage.lastUsageIndex === null ? undefined : modelContext[usage.lastUsageIndex];
   const partial = live?.generation?.message;
@@ -106,7 +117,8 @@ export function stateFrom(view: ConversationView, entries: readonly EntryRecord[
     id: String(view.conversation.id),
     messages,
     generation: live?.generation?.message ? displayMessage(`live:${live.run?.taskId}`, live.generation.message, live.run?.taskId, timings, tools) : null,
-    busy: Boolean(live?.run),
+    busy: Boolean(live?.run) || calls.some(unfinished),
+    awaitingConfirmation: calls.some((call) => call.status === 'awaiting'),
     contextUsage: {
       tokens: usage.tokens + partialTokens,
       estimated: usage.trailingTokens > 0 || partialTokens > 0,
@@ -121,8 +133,9 @@ export class Runtime {
   static async open(settings: SettingsStore) {
     const storage = await openNodeSqliteStorage(join(settings.directory, 'workbench.sqlite'));
     const registry = createRegistry();
-    registry.install(defineExtension({ name: 'workbench.local-tools', tools: [readTool] }));
-    const harness = await Harness.open(storage, { models: () => modelsFor(settings.value), registry, env: localEnvironment, settings: { stream: { maxRetries: 0 }, compaction: { enabled: false } } }, context);
+    registry.install(defineExtension({ name: 'workbench.local-tools', tools: [readTool, writeTool], tasks: [ToolRetryTask] }));
+    let harness: Harness;
+    harness = await Harness.open(storage, { models: () => recoveryModels(modelsFor(settings.value), () => harness), registry, env: localEnvironment, settings: { stream: { maxRetries: 0 }, compaction: { enabled: false } } }, context);
     const root = await harness.root(context, { agent: { tools: [], modelTools: [] } });
     await harness.commit((tx) => addConversation(tx, root.id), context);
     for (const item of await listConversations(harness, true)) {
@@ -130,6 +143,7 @@ export class Runtime {
     }
     const thinking = new ThinkingClock(harness);
     for (const item of await listConversations(harness, true)) await thinking.observe(Number(item.id) as ConversationId);
+    await reconcileToolCalls(harness, context);
     await limitRecoveredRuns(harness, context);
     harness.resume();
     return new Runtime(harness, root, settings, thinking);
@@ -139,6 +153,7 @@ export class Runtime {
       const workspace = input.path !== undefined ? await bindWorkspace(tx, input.path, input.trusted) : input.workspaceId ? await requireWorkspace(tx, input.workspaceId) : undefined;
       await addConversation(tx, id, workspace?.id);
       await allocateDefaultDirectory(tx, id, this.settings.directory);
+      await tx.doc(ToolCallsDoc, id);
     } }, context);
     await this.thinking.observe(conversation.id);
     return conversation;
@@ -169,12 +184,12 @@ export class Runtime {
     const item = (await tx.doc(ConversationsDoc)).items.find((item) => item.id === String(conversation.id));
     if (item?.workspaceId) await requireWorkspace(tx, item.workspaceId);
     const enabled = Boolean(item?.workspaceId) || (await tx.doc(LocalToolsDoc)).enabled;
-    await configure(tx, conversation.id, { model: { provider: service.id, modelId: model.modelId }, thinkingLevel: model.supportsThinking ? 'medium' : 'off', tools: enabled ? [readTool] : [], modelTools: enabled ? [readTool] : [] });
+    await configure(tx, conversation.id, { model: { provider: service.id, modelId: model.modelId }, thinkingLevel: model.supportsThinking ? 'medium' : 'off', tools: enabled ? [readTool, writeTool] : [], modelTools: enabled ? [readTool, writeTool] : [] });
   }
   async send(conversation: Conversation, content: string, selection?: ModelSelection) {
     const id = await conversation.commit(async (tx) => {
       const live = await tx.doc(LiveDoc, conversation.id);
-      if (live.run) throw new ConversationBusy(conversation.id);
+      if (live.run || await hasUnfinishedCalls(tx, conversation.id)) throw new ConversationBusy(conversation.id);
       await requireRunCapacity(tx);
       await this.configure(tx, conversation, selection);
       return conversation.submit(tx, { type: 'input', content, whenBusy: 'reject' });
@@ -185,7 +200,7 @@ export class Runtime {
   async retry(conversation: Conversation, selection?: ModelSelection) {
     const id = await conversation.commit(async (tx) => {
       const live = await tx.doc(LiveDoc, conversation.id);
-      if (live.run) return null;
+      if (live.run || await hasUnfinishedCalls(tx, conversation.id)) return null;
       if (!canRetryReply(live.runFailure) && !await stoppedForCapacity(tx, conversation.id, live.runFailure?.taskId)) return null;
       await requireRunCapacity(tx);
       await this.configure(tx, conversation, selection);
@@ -194,15 +209,8 @@ export class Runtime {
     if (id !== null) this.harness.resume();
     return id;
   }
-  async stop(conversation: Conversation) {
-    const taskId = await conversation.commit(async (tx) => {
-      const live = await tx.doc(LiveDoc, conversation.id);
-      if (live.run) {
-        await tx.appendEntry(conversation.id, { kind: STOP_ENTRY_KIND, data: { taskId: live.run.taskId, timestamp: live.generation?.message?.timestamp ?? null } });
-        return live.run.taskId;
-      }
-    }, context);
-    if (taskId !== undefined) await this.harness.abortTask(taskId, context);
+  async stop(conversation: Conversation, expected?: { key: string; attempt: number }) {
+    await stopToolCalls(this.harness, conversation.id, context, expected);
   }
   async olderEntries(conversation: Conversation, view: ConversationView) {
     const entries: EntryRecord[] = [];

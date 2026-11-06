@@ -23,7 +23,7 @@ export function selectedModel(settings: ModelSettings | null) {
 }
 
 export type ThinkingTiming = { startedAt: number; endedAt?: number };
-export type ToolCallState = { id: string; callId: string; name: string; arguments: Record<string, unknown>; status: 'pending' | 'running' | 'completed' | 'failed' | 'stopped'; output: string; cwd?: string };
+export type ToolCallState = { id: string; callId: string; name: string; arguments: Record<string, unknown>; status: 'pending' | 'running' | 'completed' | 'failed' | 'stopped' | 'awaiting' | 'retrying' | 'stopping'; output: string; cwd?: string; recovery?: { key: string; attempt: number } };
 export type ContentBlock = { type: 'text'; text: string } | { type: 'thinking'; thinking: string; timing?: ThinkingTiming } | { type: 'tool'; tool: ToolCallState };
 export interface ChatMessage {
   id: string;
@@ -45,6 +45,7 @@ export interface ConversationState {
   messages: ChatMessage[];
   generation: ChatMessage | null;
   busy: boolean;
+  awaitingConfirmation?: boolean;
   contextUsage: ContextUsage;
   failure?: { reason: string; detail?: string };
 }
@@ -56,6 +57,7 @@ export type ConversationSummary = {
   archived?: boolean;
   defaultDirectory?: string;
   workspaceId?: string;
+  awaitingConfirmation?: boolean;
 };
 
 export type Workspace = { id: string; name: string; directory: string; createdAt: number };

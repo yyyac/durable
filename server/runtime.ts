@@ -16,7 +16,7 @@ import { ThinkingClock, timingKey, type ThinkingTimings } from './thinking-timin
 import { allocateDefaultDirectory, inspectDirectory, conversationDirectory } from './directories.js';
 import { WorkspacesDoc, bindWorkspace, requireWorkspace } from './workspaces.js';
 import { LocalToolsDoc, localEnvironment, localToolsEnabled, readTool } from './local-tools.js';
-import { writeTool } from './file-writing.js';
+import { writeTool, editTool } from './file-writing.js';
 import { ToolCallsDoc, hasUnfinishedCalls, unfinished, type RecoveryCall } from './tool-calls.js';
 import { recoveryModels, reconcileToolCalls, stopToolCalls, ToolRetryTask } from './tool-recovery.js';
 import { CAPACITY_ENTRY_KIND, limitRecoveredRuns, RECOVERY_CAPACITY_MESSAGE, requireRunCapacity, stoppedForCapacity } from './run-admission.js';
@@ -133,7 +133,7 @@ export class Runtime {
   static async open(settings: SettingsStore) {
     const storage = await openNodeSqliteStorage(join(settings.directory, 'workbench.sqlite'));
     const registry = createRegistry();
-    registry.install(defineExtension({ name: 'workbench.local-tools', tools: [readTool, writeTool], tasks: [ToolRetryTask] }));
+    registry.install(defineExtension({ name: 'workbench.local-tools', tools: [readTool, writeTool, editTool], tasks: [ToolRetryTask] }));
     let harness: Harness;
     harness = await Harness.open(storage, { models: () => recoveryModels(modelsFor(settings.value), () => harness), registry, env: localEnvironment, settings: { stream: { maxRetries: 0 }, compaction: { enabled: false } } }, context);
     const root = await harness.root(context, { agent: { tools: [], modelTools: [] } });
@@ -184,7 +184,7 @@ export class Runtime {
     const item = (await tx.doc(ConversationsDoc)).items.find((item) => item.id === String(conversation.id));
     if (item?.workspaceId) await requireWorkspace(tx, item.workspaceId);
     const enabled = Boolean(item?.workspaceId) || (await tx.doc(LocalToolsDoc)).enabled;
-    await configure(tx, conversation.id, { model: { provider: service.id, modelId: model.modelId }, thinkingLevel: model.supportsThinking ? 'medium' : 'off', tools: enabled ? [readTool, writeTool] : [], modelTools: enabled ? [readTool, writeTool] : [] });
+    await configure(tx, conversation.id, { model: { provider: service.id, modelId: model.modelId }, thinkingLevel: model.supportsThinking ? 'medium' : 'off', tools: enabled ? [readTool, writeTool, editTool] : [], modelTools: enabled ? [readTool, writeTool, editTool] : [] });
   }
   async send(conversation: Conversation, content: string, selection?: ModelSelection) {
     const id = await conversation.commit(async (tx) => {

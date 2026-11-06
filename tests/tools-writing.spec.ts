@@ -26,7 +26,7 @@ test('启用后模型能在普通会话目录创建真实新文件，已有同�
   await expect(page.getByTestId('assistant-message').last()).toHaveText('目标已存在，已保留原内容');
   await expect(page.getByRole('button', { name: /write new.txt 失败/ })).toHaveCount(1);
   expect(await readFile(join(conversation.defaultDirectory, 'new.txt'), 'utf8')).toBe('首次真实写入');
-  expect(JSON.stringify(upstream.requests[3].messages)).toContain('exist');
+  expect(JSON.stringify(upstream.requests[3].messages)).toContain('当前会话成功读取');
 });
 
 test('写入已产生真实文件效果后崩溃会持久等待确认，停止本轮不重放或继续模型', async ({ page, workbench, upstream }) => {

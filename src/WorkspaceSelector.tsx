@@ -58,7 +58,7 @@ export function WorkspaceSelector({ workspaces, workspaceId, defaultDirectory, d
         finally { setSaving(false); }
       }}>
         <label className={styles.field}>文件夹绝对路径<input value={path} onChange={(event) => { setPath(event.target.value); setRestoreId(undefined); }} required autoFocus /></label>
-        <p>本机工具使用后端进程所拥有的用户权限，可读取和创建本机文件，同名文件不会被覆盖。正常调用直接执行，中断的写入须逐次确认后重试。工作目录仅是相对路径的起点，并非目录沙箱，工具也可能访问目录之外的文件。</p>
+        <p>本机工具使用后端进程所拥有的用户权限，可读取、创建本机文件并执行 PowerShell 命令，同名文件不会被文件创建工具覆盖。命令内部的文件变化不享有文件工具的冲突检测。正常调用直接执行，中断的写入和所有命令须逐次确认后重试；停止保留已产生的改动和输出。工作目录仅是相对路径的起点，并非目录沙箱，工具也可能访问目录之外的文件。</p>
         <label className={styles.consent}><input type="checkbox" checked={trusted} onChange={(event) => setTrusted(event.target.checked)} />我已了解并信任此工作区的本机工具访问</label>
         {error && <p role="alert">{error}</p>}
         {restoreId && <button type="button" className={styles.restore} disabled={saving} onClick={async () => {

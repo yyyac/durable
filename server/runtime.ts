@@ -14,7 +14,7 @@ import { addConversation, listConversations, ConversationsDoc } from './conversa
 import { canRetryReply } from '../src/types.js';
 import { ThinkingClock, timingKey, type ThinkingTimings } from './thinking-timing.js';
 import { allocateDefaultDirectory, inspectDirectory, conversationDirectory } from './directories.js';
-import { WorkspacesDoc, bindWorkspace, requireWorkspace } from './workspaces.js';
+import { WorkspacesDoc, bindWorkspace, requireWorkspace, requireConversationActive } from './workspaces.js';
 import { LocalToolsDoc, localEnvironment, localToolsEnabled, readTool } from './local-tools.js';
 import { writeTool, editTool } from './file-writing.js';
 import { powershellTool } from './powershell.js';
@@ -138,7 +138,7 @@ export class Runtime {
     let harness: Harness;
     harness = await Harness.open(storage, { models: () => recoveryModels(modelsFor(settings.value), () => harness), registry, env: localEnvironment, settings: { stream: { maxRetries: 0 }, compaction: { enabled: false } } }, context);
     const root = await harness.root(context, { agent: { tools: [], modelTools: [] } });
-    await harness.commit((tx) => addConversation(tx, root.id), context);
+    await harness.commit(async (tx) => { await addConversation(tx, root.id); await tx.doc(WorkspacesDoc); }, context);
     for (const item of await listConversations(harness, true)) {
       await harness.commit((tx) => allocateDefaultDirectory(tx, Number(item.id) as ConversationId, settings.directory), context);
     }
@@ -189,6 +189,7 @@ export class Runtime {
   }
   async send(conversation: Conversation, content: string, selection?: ModelSelection) {
     const id = await conversation.commit(async (tx) => {
+      await requireConversationActive(tx, conversation.id);
       const live = await tx.doc(LiveDoc, conversation.id);
       if (live.run || await hasUnfinishedCalls(tx, conversation.id)) throw new ConversationBusy(conversation.id);
       await requireRunCapacity(tx);
@@ -200,6 +201,7 @@ export class Runtime {
   }
   async retry(conversation: Conversation, selection?: ModelSelection) {
     const id = await conversation.commit(async (tx) => {
+      await requireConversationActive(tx, conversation.id);
       const live = await tx.doc(LiveDoc, conversation.id);
       if (live.run || await hasUnfinishedCalls(tx, conversation.id)) return null;
       if (!canRetryReply(live.runFailure) && !await stoppedForCapacity(tx, conversation.id, live.runFailure?.taskId)) return null;

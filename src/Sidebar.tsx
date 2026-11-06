@@ -9,7 +9,7 @@ import styles from './App.module.css';
 import management from './ConversationManagement.module.css';
 import workspaceStyles from './Workspaces.module.css';
 
-export function Sidebar({ conversations, workspaces, selectedId, onSelect, onCreate, onCreateWorkspace, onRenameWorkspace, onRename, onArchive, creating, children }: {
+export function Sidebar({ conversations, workspaces, selectedId, onSelect, onCreate, onCreateWorkspace, onRenameWorkspace, onArchiveWorkspace, onRename, onArchive, creating, children }: {
   conversations: ConversationSummary[];
   workspaces: Workspace[];
   selectedId: string | null;
@@ -17,6 +17,7 @@ export function Sidebar({ conversations, workspaces, selectedId, onSelect, onCre
   onCreate: () => void;
   onCreateWorkspace: (id: string) => void;
   onRenameWorkspace: (id: string, name: string) => Promise<void>;
+  onArchiveWorkspace: (id: string) => Promise<void>;
   onRename: (id: string, title: string) => Promise<void>;
   onArchive: (id: string) => Promise<void>;
   creating: boolean;
@@ -31,14 +32,14 @@ export function Sidebar({ conversations, workspaces, selectedId, onSelect, onCre
     <button className={styles.newConversation} onClick={onCreate} disabled={creating}>
       <MessageCirclePlus size={16} /><span>新建会话</span>
     </button>
-    <ConversationSearch conversations={conversations} onSelect={onSelect} />
+    <ConversationSearch conversations={conversations} workspaces={workspaces} onSelect={onSelect} />
     <p className={styles.sectionLabel}>会话</p>
     <nav className={styles.conversations} aria-label="会话列表">
-      {workspaces.map((workspace) => <section key={workspace.id} aria-label={`${workspace.name}工作区`}>
+      {workspaces.filter((workspace) => !workspace.archived).map((workspace) => <section key={workspace.id} aria-label={`${workspace.name}工作区`}>
         <div className={`${management.row} ${workspaceStyles.group}`}>
           <button className={workspaceStyles.groupTitle} title={workspace.directory} aria-label={`${collapsed.has(workspace.id) ? '展开' : '折叠'}${workspace.name}工作区`} aria-expanded={!collapsed.has(workspace.id)} onClick={() => setCollapsed((previous) => { const next = new Set(previous); if (next.has(workspace.id)) next.delete(workspace.id); else next.add(workspace.id); return next; })}><Folder size={15} /><span>{workspace.name}</span><ChevronDown size={12} className={collapsed.has(workspace.id) ? workspaceStyles.closed : ''} /></button>
           <button className={workspaceStyles.groupCreate} aria-label={`在${workspace.name}中新建会话`} disabled={creating} onClick={() => onCreateWorkspace(workspace.id)}><Plus size={14} /></button>
-          <WorkspaceMenu workspace={workspace} onRename={onRenameWorkspace} />
+          <WorkspaceMenu workspace={workspace} onRename={onRenameWorkspace} onArchive={onArchiveWorkspace} />
         </div>
         {!collapsed.has(workspace.id) && <div className={workspaceStyles.sessions}>{rows(workspace.id)}</div>}
       </section>)}

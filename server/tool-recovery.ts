@@ -7,7 +7,7 @@ import type { Models } from '@earendil-works/pi-ai/models';
 import { createAssistantMessageEventStream } from '@earendil-works/pi-ai/utils/event-stream';
 import { ToolCallsDoc, unfinished, type RecoveryCall } from './tool-calls.js';
 import { ConversationsDoc } from './conversations.js';
-import { WorkspacesDoc, requireWorkspace } from './workspaces.js';
+import { WorkspacesDoc, requireWorkspace, checkConversationActive, requireConversationActive } from './workspaces.js';
 import { conversationDirectory, inspectDirectory } from './directories.js';
 import { requireRunCapacity } from './run-admission.js';
 import { lstat } from 'node:fs/promises';
@@ -31,6 +31,7 @@ function blocks(call: RecoveryCall, runId: number | undefined) {
 }
 export async function waitForToolBarrier(reader: DocumentReader & DocumentObserver, conversationId: ConversationId, runId: number | undefined, context: Context) {
   context.abortSignal?.throwIfAborted();
+  await checkConversationActive(reader, conversationId, context);
   const calls = await reader.snapshot(ToolCallsDoc, conversationId, context);
   context.abortSignal?.throwIfAborted();
   if (!calls?.items.some((call) => blocks(call, runId))) return;
@@ -48,6 +49,7 @@ export async function waitForToolBarrier(reader: DocumentReader & DocumentObserv
       void watch.closed.then(() => finish(new Error('工具恢复状态观察已结束')), finish);
     });
   } finally { await watch.stop(); }
+  await checkConversationActive(reader, conversationId, context);
 }
 
 export function recoverableTool<T extends ToolRegistration>(tool: T, operation: RecoveryOperation, plan: RecoveryPlan = {}): T {
@@ -181,6 +183,7 @@ export const ToolRetryTask = defineTask<{ key: string; attempt: number }, { phas
 
 export async function confirmToolCall(harness: Harness, conversationId: ConversationId, key: string, attempt: number, context: Context) {
   const result = await harness.commit(async (tx) => {
+    await requireConversationActive(tx, conversationId);
     const call = (await tx.doc(ToolCallsDoc, conversationId)).items.find((item) => item.key === key);
     if (!call) throw new Error('待确认调用不存在');
     if (['retrying', 'done'].includes(call.status) && call.attempt === attempt + 1) return { taskId: call.retryTaskId, accepted: false };

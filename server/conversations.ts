@@ -1,6 +1,7 @@
 import { defineDoc, type ConversationId, type Harness, type Tx } from '@earendil-works/pi-durable';
 import { BACKGROUND_CONTEXT } from '@earendil-works/chord/context';
 import type { ConversationSummary } from '../src/types.js';
+import { requireConversationActive } from './workspaces.js';
 
 export const ConversationsDoc = defineDoc({
   kind: 'workbench.conversations',
@@ -34,6 +35,7 @@ export async function renameConversation(harness: Harness, id: ConversationId, t
   if (!title.trim()) throw new Error('请输入会话名称');
   if (Array.from(title.trim()).length > 120) throw new Error('会话名称不能超过 120 个字');
   await harness.commit(async (tx) => {
+    await requireConversationActive(tx, id);
     const index = await tx.doc(ConversationsDoc);
     const item = index.items.find((item) => item.id === String(id));
     if (!item) throw new Error('会话不存在');
@@ -43,6 +45,7 @@ export async function renameConversation(harness: Harness, id: ConversationId, t
 
 export async function archiveConversation(harness: Harness, id: ConversationId) {
   await harness.commit(async (tx) => {
+    await requireConversationActive(tx, id);
     const index = await tx.doc(ConversationsDoc);
     const item = index.items.find((item) => item.id === String(id));
     if (!item) throw new Error('会话不存在');

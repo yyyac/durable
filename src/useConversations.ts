@@ -51,14 +51,17 @@ export function useConversations() {
     setError('');
     try {
       const response = await fetch(input.path === undefined ? '/api/conversations' : '/api/workspaces', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(input) });
-      if (!response.ok) throw new Error((await response.json()).error);
+      if (!response.ok) {
+        const result = await response.json();
+        throw Object.assign(new Error(result.error), { workspaceId: result.workspaceId });
+      }
       const data = await response.json();
       const item: ConversationSummary = input.path === undefined ? data : data.conversation;
       requestVersion.current++;
       setConversations((items) => [item, ...items.filter((existing) => existing.id !== item.id)]);
       select(item.id);
       return item;
-    } catch (error) { setError((error as Error).message); throw error; }
+    } catch (error) { if (!(error as { workspaceId?: string }).workspaceId) setError((error as Error).message); throw error; }
     finally { setCreating(false); }
   }
   async function rename(id: string, title: string) {

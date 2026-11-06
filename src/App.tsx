@@ -12,6 +12,7 @@ import { useConversations } from './useConversations';
 import { useConversation } from './useConversation';
 import { canRetryReply, selectedModel, type ModelSettings, type Workspace } from './types';
 import styles from './App.module.css';
+import workspaceStyles from './Workspaces.module.css';
 
 export function App() {
   const [settings, setSettings] = useState<ModelSettings | null>(null);
@@ -29,8 +30,9 @@ export function App() {
     if (!response.ok) throw new Error('无法读取工作区');
     setWorkspaces(await response.json());
   }, []);
-  useEffect(() => { void refreshWorkspaces().catch((error: Error) => setError(error.message)); }, [refreshWorkspaces]);
+  useEffect(() => { if (state?.workspaces) setWorkspaces(state.workspaces); }, [state?.workspaces]);
   const current = conversations.find((item) => item.id === selectedId);
+  const workspaceArchived = workspaces.some((workspace) => workspace.id === current?.workspaceId && workspace.archived);
   const currentId = useRef(selectedId);
   currentId.current = selectedId;
   useEffect(() => { void fetch('/api/settings').then((response) => response.json()).then(setSettings); }, []);
@@ -42,7 +44,7 @@ export function App() {
   }, [selectedId]);
   async function send(event: FormEvent) {
     event.preventDefault();
-    if (!state || !selected || state.busy || submitting || creating || !input.trim()) return;
+    if (!state || !selected || workspaceArchived || state.busy || submitting || creating || !input.trim()) return;
     setSubmitting(true);
     setError('');
     const sendingId = state.id;
@@ -55,7 +57,7 @@ export function App() {
     finally { if (currentId.current === sendingId) setSubmitting(false); }
   }
   async function retry() {
-    if (!state || !selected || state.busy || submitting || creating || !canRetryReply(state.failure)) return;
+    if (!state || !selected || workspaceArchived || state.busy || submitting || creating || !canRetryReply(state.failure)) return;
     const retryingId = state.id;
     setSubmitting(true);
     setError('');
@@ -85,6 +87,14 @@ export function App() {
       if (!response.ok) throw new Error((await response.json()).error);
     } catch (error) { if (currentId.current === openingId) setError((error as Error).message); }
   }
+  async function setWorkspaceArchived(id: string, archived: boolean) {
+    setError('');
+    const response = await fetch(`/api/workspaces/${id}`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ archived }) });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error);
+    await refreshWorkspaces();
+    if (result.directory && !result.directory.available) setError(`工作区已恢复，但工作目录不可用：${result.directory.path}。历史记录仍然保留。`);
+  }
   const visibleGeneration = state?.generation?.content.some((block) => block.type === 'tool' || (block.type === 'text' ? block.text : block.thinking).trim()) ? state.generation : null;
   const messages = [...(state?.messages ?? []), ...(visibleGeneration ? [visibleGeneration] : [])];
   const runningTool = messages.some((message) => message.content.some((block) => block.type === 'tool' && ['pending', 'running', 'awaiting', 'retrying', 'stopping'].includes(block.tool.status)));
@@ -97,7 +107,7 @@ export function App() {
       const response = await fetch(`/api/workspaces/${id}`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name }) });
       if (!response.ok) throw new Error((await response.json()).error);
       await refreshWorkspaces();
-    }} onRename={rename} onArchive={archive} creating={creating || !selectedId}>
+    }} onArchiveWorkspace={(id) => setWorkspaceArchived(id, true)} onRename={rename} onArchive={archive} creating={creating || !selectedId}>
       <SettingsDialog settings={settings} onSaved={setSettings} />
     </Sidebar>
     <main className={`${styles.main} ${empty ? styles.mainEmpty : ''}`}>
@@ -108,22 +118,23 @@ export function App() {
         </article>)}{requesting && <div role="status" aria-label="正在请求模型" className={styles.requesting}><BrandLogo size={22} className={styles.requestLogo} /><span>请求中…</span></div>}</div> : <div className={styles.empty}><h2><BrandLogo size={46} />Agent 工作台</h2>{!selected && <><p>尚未配置模型</p><p>请先在设置中添加模型服务。</p></>}</div>}
         {!state?.busy && canRetryReply(state?.failure) && <div role="alert" className={styles.failureNotice}>
           <p>回复失败：{state?.failure?.detail || '模型未能完成回复，请检查模型服务后重试。'}</p>
-          <button type="button" onClick={() => { void retry(); }} disabled={submitting || !selected}>重试回复</button>
+          <button type="button" onClick={() => { void retry(); }} disabled={submitting || !selected || workspaceArchived}>重试回复</button>
         </div>}
       </div>
       <div className={styles.composerArea}>
-        {empty && <div className={styles.directoryPicker}><WorkspaceSelector workspaces={workspaces} workspaceId={current?.workspaceId} defaultDirectory={current?.defaultDirectory} disabled={creating || !state} onChoose={(workspaceId) => create({ workspaceId })} onAdd={async (path) => { await create({ path, trusted: true }); await refreshWorkspaces(); }} />{directoryButton}</div>}
+        {workspaceArchived && <div className={workspaceStyles.archiveNotice}><p role="status">工作区已归档，仅可查看历史。</p><button type="button" onClick={() => { if (current?.workspaceId) void setWorkspaceArchived(current.workspaceId, false).catch((error: Error) => setError(error.message)); }}>恢复工作区</button></div>}
+        {empty && <div className={styles.directoryPicker}><WorkspaceSelector workspaces={workspaces} workspaceId={current?.workspaceId} defaultDirectory={current?.defaultDirectory} disabled={creating || !state} onChoose={(workspaceId) => create({ workspaceId })} onAdd={async (path) => { await create({ path, trusted: true }); await refreshWorkspaces(); }} onRestore={(id) => setWorkspaceArchived(id, false)} />{directoryButton}</div>}
         {state?.directory && !state.directory.available && <p role="status" className={styles.connection}><strong>工作目录不可用</strong>，原目录可能已移动或删除。历史记录仍然保留。</p>}
         {connection === 'reconnecting' && <p role="status" className={styles.connection}>连接已断开，正在重连…</p>}
         {state?.failure?.reason === 'aborted' && messages.at(-1)?.termination !== 'stopped' && <p role="status" className={styles.connection}>已停止</p>}
         {(error || listError) && <p role="alert" className={styles.error}>{error || listError}</p>}
         <form className={styles.composer} onSubmit={send}>
           <div className={styles.composerInput}>
-            <textarea aria-label="输入消息" placeholder="输入消息…" rows={1} value={input} onChange={(event) => setInput(event.target.value)} disabled={!selected || !state || state.busy || submitting || creating} onKeyDown={(event) => {
+            <textarea aria-label="输入消息" placeholder="输入消息…" rows={1} value={input} onChange={(event) => setInput(event.target.value)} disabled={!selected || !state || workspaceArchived || state.busy || submitting || creating} onKeyDown={(event) => {
               if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); }
             }} />
           </div>
-          <div className={styles.composerActions}><span>{selected ? !current?.workspaceId && <LocalToolsNotice key={selectedId} directory={state?.directory?.path} /> : '请先配置模型'}</span>{settings && selected && <ModelSelector settings={settings} contextUsage={state?.contextUsage ?? null} onSaved={setSettings} />}{state?.busy ? <button type="button" aria-label="停止生成" className={styles.send} disabled={stopping} onClick={() => { void stop(); }}><Square size={12} fill="currentColor" /></button> : <button type="submit" aria-label="发送消息" className={styles.send} disabled={!selected || !state || submitting || creating}><ArrowUp size={18} /></button>}</div>
+          <div className={styles.composerActions}><span>{selected ? !current?.workspaceId && <LocalToolsNotice key={selectedId} directory={state?.directory?.path} /> : '请先配置模型'}</span>{settings && selected && <ModelSelector settings={settings} contextUsage={state?.contextUsage ?? null} onSaved={setSettings} />}{state?.busy ? <button type="button" aria-label="停止生成" className={styles.send} disabled={stopping} onClick={() => { void stop(); }}><Square size={12} fill="currentColor" /></button> : <button type="submit" aria-label="发送消息" className={styles.send} disabled={!selected || !state || workspaceArchived || submitting || creating}><ArrowUp size={18} /></button>}</div>
         </form>
       </div>
     </main>

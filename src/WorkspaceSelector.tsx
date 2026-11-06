@@ -6,10 +6,11 @@ import type { Workspace } from './types';
 import styles from './Workspaces.module.css';
 import notice from './LocalToolsNotice.module.css';
 
-export function WorkspaceSelector({ workspaces, workspaceId, defaultDirectory, disabled, onChoose, onAdd }: {
+export function WorkspaceSelector({ workspaces, workspaceId, defaultDirectory, disabled, onChoose, onAdd, onRestore }: {
   workspaces: Workspace[]; workspaceId?: string; defaultDirectory?: string; disabled: boolean;
   onChoose: (workspaceId?: string) => Promise<unknown>;
   onAdd: (path: string) => Promise<unknown>;
+  onRestore: (id: string) => Promise<unknown>;
 }) {
   const [adding, setAdding] = useState(false);
   const [path, setPath] = useState('');
@@ -17,6 +18,7 @@ export function WorkspaceSelector({ workspaces, workspaceId, defaultDirectory, d
   const [saving, setSaving] = useState(false);
   const [choosing, setChoosing] = useState(false);
   const [error, setError] = useState('');
+  const [restoreId, setRestoreId] = useState<string>();
   const workspace = workspaces.find((item) => item.id === workspaceId);
   async function selectFolder() {
     if (choosing) return;
@@ -25,9 +27,9 @@ export function WorkspaceSelector({ workspaces, workspaceId, defaultDirectory, d
       const response = await fetch('/api/directories/select', { method: 'POST' });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error);
-      if (result.path !== null) { setPath(result.path); setTrusted(false); setAdding(true); }
+      if (result.path !== null) { setPath(result.path); setRestoreId(undefined); setTrusted(false); setAdding(true); }
     } catch (error) {
-      setPath(''); setTrusted(false); setError((error as Error).message); setAdding(true);
+      setPath(''); setRestoreId(undefined); setTrusted(false); setError((error as Error).message); setAdding(true);
     } finally { setChoosing(false); }
   }
   return <Dialog.Root open={adding} onOpenChange={setAdding}>
@@ -35,12 +37,16 @@ export function WorkspaceSelector({ workspaces, workspaceId, defaultDirectory, d
       <Menu.Trigger aria-label="选择工作目录" disabled={disabled || choosing} className={styles.chip} title={workspace?.directory ?? defaultDirectory}><Folder size={14} /><span>{choosing ? '正在选择文件夹…' : workspace?.name ?? '默认工作目录'}</span><ChevronDown size={12} /></Menu.Trigger>
       <Menu.Portal><Menu.Content className={styles.panel} align="start" sideOffset={4}>
         <Menu.Label className={styles.caption}>工作目录</Menu.Label>
-        {[{ id: undefined, name: '默认工作目录', directory: defaultDirectory ?? '为每个普通会话提供独立目录' }, ...workspaces].map((item) => <Menu.Item key={item.id ?? 'default'} className={styles.option} data-selected={item.id === workspaceId} title={item.directory} onSelect={() => { if (item.id !== workspaceId) void onChoose(item.id).catch(() => {}); }}>
+        {[{ id: undefined, name: '默认工作目录', directory: defaultDirectory ?? '为每个普通会话提供独立目录' }, ...workspaces.filter((workspace) => !workspace.archived)].map((item) => <Menu.Item key={item.id ?? 'default'} className={styles.option} data-selected={item.id === workspaceId} title={item.directory} onSelect={() => { if (item.id !== workspaceId) void onChoose(item.id).catch(() => {}); }}>
           <Folder size={15} /><span className={styles.info}><span className={styles.name}>{item.name}</span><span className={styles.path}>{item.directory}</span></span>{item.id === workspaceId && <Check size={14} />}
         </Menu.Item>)}
+        {workspaces.some((workspace) => workspace.archived) && <>
+          <Menu.Separator className={styles.divider} /><Menu.Label className={styles.caption}>已归档工作区</Menu.Label>
+          {workspaces.filter((workspace) => workspace.archived).map((item) => <Menu.Item key={item.id} className={styles.option} title={item.directory} aria-label={`恢复${item.name}工作区`} onSelect={() => { void onRestore(item.id).catch((error: Error) => { setError(error.message); setAdding(true); }); }}><Folder size={15} /><span className={styles.info}><span className={styles.name}>恢复 {item.name}</span><span className={styles.path}>{item.directory}</span></span></Menu.Item>)}
+        </>}
         <Menu.Separator className={styles.divider} />
         <Menu.Item className={styles.action} onSelect={() => { void selectFolder(); }}><FolderPlus size={16} />选择文件夹…</Menu.Item>
-        <Menu.Item className={styles.action} onSelect={() => { setPath(''); setTrusted(false); setError(''); setAdding(true); }}><FolderPlus size={16} />填写文件夹路径…</Menu.Item>
+        <Menu.Item className={styles.action} onSelect={() => { setPath(''); setRestoreId(undefined); setTrusted(false); setError(''); setAdding(true); }}><FolderPlus size={16} />填写文件夹路径…</Menu.Item>
       </Menu.Content></Menu.Portal>
     </Menu.Root></div>
     <Dialog.Portal><Dialog.Overlay className={notice.overlay} /><Dialog.Content className={notice.dialog}>
@@ -48,13 +54,19 @@ export function WorkspaceSelector({ workspaces, workspaceId, defaultDirectory, d
       <form onSubmit={async (event) => {
         event.preventDefault(); if (!trusted || saving) return; setSaving(true); setError('');
         try { await onAdd(path); setAdding(false); }
-        catch (error) { setError((error as Error).message); }
+        catch (error) { setError((error as Error).message); setRestoreId((error as { workspaceId?: string }).workspaceId); }
         finally { setSaving(false); }
       }}>
-        <label className={styles.field}>文件夹绝对路径<input value={path} onChange={(event) => setPath(event.target.value)} required autoFocus /></label>
+        <label className={styles.field}>文件夹绝对路径<input value={path} onChange={(event) => { setPath(event.target.value); setRestoreId(undefined); }} required autoFocus /></label>
         <p>本机工具使用后端进程所拥有的用户权限，可读取和创建本机文件，同名文件不会被覆盖。正常调用直接执行，中断的写入须逐次确认后重试。工作目录仅是相对路径的起点，并非目录沙箱，工具也可能访问目录之外的文件。</p>
         <label className={styles.consent}><input type="checkbox" checked={trusted} onChange={(event) => setTrusted(event.target.checked)} />我已了解并信任此工作区的本机工具访问</label>
         {error && <p role="alert">{error}</p>}
+        {restoreId && <button type="button" className={styles.restore} disabled={saving} onClick={async () => {
+          setSaving(true); setError('');
+          try { await onRestore(restoreId); setAdding(false); }
+          catch (error) { setError((error as Error).message); }
+          finally { setSaving(false); }
+        }}>恢复原工作区</button>}
         <div className={notice.actions}><Dialog.Close asChild><button type="button" disabled={saving}>取消</button></Dialog.Close><button className={notice.confirm} type="submit" disabled={saving || !trusted}>添加并开始会话</button></div>
       </form>
       <Dialog.Close className={notice.close} aria-label="关闭添加工作区" disabled={saving}><X size={18} /></Dialog.Close>

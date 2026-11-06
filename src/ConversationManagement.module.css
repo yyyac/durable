@@ -31,4 +31,5 @@
 .searchResults button > span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .searchResults > p { text-align: center; color: #969ca3; padding-top: 45px; }
 .archived { margin-left: auto; flex-shrink: 0; font-size: 11px; color: #999fa6; }
+.searchWorkspace { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; color: #92969c; margin-top: 3px; }
 .searchFooter { flex-shrink: 0; margin: 8px -22px -22px; padding: 12px 22px; border-top: 1px solid #f0f1f3; color: #a0a5ac; font-size: 11px; }

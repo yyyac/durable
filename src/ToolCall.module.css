@@ -11,3 +11,7 @@
 .body::before { content: ''; position: absolute; left: 10px; top: 0; bottom: 0; width: 1px; background: repeating-linear-gradient(to bottom,#00000021 0 2px,transparent 2px 4px); }
 .body pre { margin: 6px 0; color: #60656d; font: 12px/20px Consolas, monospace; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 360px; overflow: auto; }
 .directory { color: #0000006b; font-size: 12px; overflow-wrap: anywhere; }
+.confirmation { margin: 8px 0 8px 28px; color: #60656d; font-size: 13px; }
+.confirmation p { margin: 6px 0; }
+.confirmation button { padding: 5px 10px; border: 1px solid #00000021; border-radius: 7px; margin-right: 8px; background: #fff; }
+.confirmation button:first-of-type { background: #202226; color: #fff; }

@@ -22,6 +22,7 @@ export function App() {
   const selected = selectedModel(settings);
   const { conversations, selectedId, select, create, creating, refresh, rename, archive, error: listError } = useConversations();
   const { state, connection } = useConversation(selectedId);
+  useEffect(() => { if (connection === 'connected') void refresh().catch((error: Error) => setError(error.message)); }, [connection, refresh, state?.awaitingConfirmation]);
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const refreshWorkspaces = useCallback(async () => {
     const response = await fetch('/api/workspaces');
@@ -86,8 +87,8 @@ export function App() {
   }
   const visibleGeneration = state?.generation?.content.some((block) => block.type === 'tool' || (block.type === 'text' ? block.text : block.thinking).trim()) ? state.generation : null;
   const messages = [...(state?.messages ?? []), ...(visibleGeneration ? [visibleGeneration] : [])];
-  const runningTool = messages.some((message) => message.content.some((block) => block.type === 'tool' && (block.tool.status === 'pending' || block.tool.status === 'running')));
-  const requesting = (submitting || state?.busy) && !visibleGeneration && !runningTool;
+  const runningTool = messages.some((message) => message.content.some((block) => block.type === 'tool' && ['pending', 'running', 'awaiting', 'retrying', 'stopping'].includes(block.tool.status)));
+  const requesting = (submitting || state?.busy) && !visibleGeneration && !runningTool && !state?.awaitingConfirmation;
   const empty = !messages.length && !requesting;
   const directoryButton = state?.directory && <button type="button" aria-label="打开工作目录" title={state.directory.path} className={styles.directory} onClick={() => { void openDirectory(); }}><FolderOpen size={14} /><span>{state.directory.path}</span></button>;
   const { scrollRef, onScroll } = useFollowingScroll(state?.id, messages);
@@ -103,7 +104,7 @@ export function App() {
       {!empty && <header className={styles.header}><h2 aria-label="会话标题">{conversations.find((conversation) => conversation.id === selectedId)?.title ?? '新会话'}</h2>{directoryButton}</header>}
       <div className={styles.messages} ref={scrollRef} onScroll={onScroll}>
         {messages.length || requesting ? <div className={styles.transcript}>{messages.map((message) => <article key={`${state?.id}:${message.role}:${message.timestamp}`} className={message.role === 'user' ? styles.userMessage : styles.assistantMessage}>
-          <MessageContent message={message} streaming={message === state?.generation} showFailureDetail={state?.busy || !canRetryReply(state?.failure) || message !== state?.messages.at(-1)} />
+          <MessageContent message={message} conversationId={state?.id} streaming={message === state?.generation} showFailureDetail={state?.busy || !canRetryReply(state?.failure) || message !== state?.messages.at(-1)} />
         </article>)}{requesting && <div role="status" aria-label="正在请求模型" className={styles.requesting}><BrandLogo size={22} className={styles.requestLogo} /><span>请求中…</span></div>}</div> : <div className={styles.empty}><h2><BrandLogo size={46} />Agent 工作台</h2>{!selected && <><p>尚未配置模型</p><p>请先在设置中添加模型服务。</p></>}</div>}
         {!state?.busy && canRetryReply(state?.failure) && <div role="alert" className={styles.failureNotice}>
           <p>回复失败：{state?.failure?.detail || '模型未能完成回复，请检查模型服务后重试。'}</p>

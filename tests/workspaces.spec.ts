@@ -36,7 +36,7 @@ test('工作区确认后真实读取，空会话切换目录创建新身份且�
   await page.getByRole('button', { name: '发送消息', exact: true }).click();
   await expect(page.getByTestId('assistant-message').last()).toHaveText('已读取工作区文件');
   expect(JSON.stringify(upstream.requests[1].messages)).toContain('工作区的真实共享文件');
-  expect(upstream.requests[0].tools).toHaveLength(1);
+  expect(upstream.requests[0].tools).toHaveLength(2);
   await page.goto(originalUrl);
   await expect(page.getByRole('button', { name: '启用本机工具', exact: true })).toBeVisible();
   upstream.enqueue({ chunks: ['普通会话仍可纯聊天'] });

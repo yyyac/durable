@@ -1,5 +1,6 @@
 import type { Context } from '@earendil-works/chord/context';
 import { LiveDoc, type ConversationId, type Cursor, type Harness, type TaskId, type Tx } from '@earendil-works/pi-durable';
+import { recoveryActiveTask } from './tool-calls.js';
 
 export const MAX_ACTIVE_RUNS = 10;
 export const CAPACITY_ENTRY_KIND = 'workbench.run-capacity';
@@ -16,7 +17,8 @@ export async function activeRuns(tx: Tx) {
     const page = await tx.scanConversations({}, 100, cursor);
     for (const conversation of page.items) {
       const { run } = await tx.doc(LiveDoc, conversation.id);
-      if (run) runs.push({ conversationId: conversation.id, taskId: run.taskId });
+      const taskId = await recoveryActiveTask(tx, conversation.id, run?.taskId);
+      if (taskId !== undefined) runs.push({ conversationId: conversation.id, taskId });
     }
     cursor = page.next;
   } while (cursor);

@@ -18,6 +18,8 @@ button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 2px
 .conversations { min-height: 0; overflow-y: auto; }
 .settingsTrigger { margin-top: auto; display: flex; align-items: center; gap: 10px; padding: 10px; border-radius: 8px; text-align: left; }
 .settingsTrigger:hover { background: #eceff1; }
+.pendingBadge { position: absolute; right: 34px; top: 9px; color: #996b22; font-size: 11px; line-height: 20px; }
+.awaitingConversation { padding-right: 76px; }
 .main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .header { height: 48px; flex-shrink: 0; display: flex; align-items: center; border-bottom: 1px solid #e4e5e7; padding: 0 16px; }
 .header h2 { min-width: 0; margin: 0; font-size: 14px; font-weight: 400; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

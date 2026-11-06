@@ -59,7 +59,7 @@ export const readTool = {
       const reads = await tx.doc(FileReadsDoc, api.conversationId);
       reads.items = reads.items.filter((item) => item.identity !== version.identity && item.path !== version.path);
       reads.items.push({ ...version, readId: String(api.taskId) });
-      reads.missing = reads.missing?.filter((item) => !sameFilePath(item.path, version.path));
+      reads.missing = (reads.missing ?? []).filter((item) => !sameFilePath(item.path, version.path));
     }, context);
     return { ...result, details: { ...result.details, cwd } };
   }) satisfies typeof read.execute,

@@ -204,6 +204,9 @@ test('思考正文和工具按执行顺序显示，切换刷新接续后保留�
   await page.getByRole('textbox', { name: '输入消息' }).fill('验证工具顺序');
   await page.getByRole('button', { name: '发送消息' }).click();
   await expect(page.getByTestId('assistant-message').last()).toHaveText('读取后首段');
+  const assistantTimes = page.locator('article').filter({ has: page.getByTestId('assistant-message') }).locator('time');
+  await expect(assistantTimes).toHaveCount(0);
+  await expect(page.getByRole('button', { name: '复制正文' })).toHaveCount(0);
   const beforeSwitch = (await page.getByTestId('assistant-message').allTextContents()).join('\n');
   expect(beforeSwitch.indexOf('思考过程')).toBeLessThan(beforeSwitch.indexOf('读取前正文'));
   expect(beforeSwitch.indexOf('读取前正文')).toBeLessThan(beforeSwitch.indexOf('read'));
@@ -222,6 +225,9 @@ test('思考正文和工具按执行顺序显示，切换刷新接续后保留�
   await expect(page.getByTestId('tool-output')).toHaveText('真实输出头\n真实输出尾');
   upstream.release();
   await expect(page.getByTestId('assistant-message').last()).toHaveText('读取后首段与最终尾段');
+  await expect(assistantTimes).toHaveCount(1);
+  await expect(page.locator('article').filter({ hasText: '读取后首段与最终尾段' }).locator('time')).toBeVisible();
+  await expect(page.getByRole('button', { name: '复制正文' })).toHaveCount(1);
   await expect(tool).toHaveAttribute('aria-expanded', 'true');
   await expect(tool).toHaveCount(1);
   await expect(page.getByTestId('tool-output')).toHaveText('真实输出头\n真实输出尾');
@@ -253,4 +259,9 @@ test('模型在不同轮次复用调用编号时，两张工具卡片各自保�
   await page.reload();
   await page.getByRole('button', { name: /read first.txt 已完成/ }).click();
   await expect(page.getByTestId('tool-output').nth(0)).toHaveText('第一份独立读取内容');
+  await expect(page.locator('article').filter({ has: page.getByTestId('user-message') }).locator('time')).toHaveCount(2);
+  const replies = page.locator('article').filter({ has: page.getByTestId('assistant-message') });
+  await expect(replies.locator('time')).toHaveCount(2);
+  await expect(replies.filter({ hasText: '第一轮完成' }).locator('time')).toBeVisible();
+  await expect(replies.filter({ hasText: '第二轮完成' }).locator('time')).toBeVisible();
 });

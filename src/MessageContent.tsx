@@ -47,8 +47,9 @@ function ThinkingBlock({ text, active, timing }: { text: string; active: boolean
   </section>;
 }
 
-export function MessageContent({ message, streaming, showFailureDetail = true, conversationId }: { message: ChatMessage; streaming: boolean; showFailureDetail?: boolean; conversationId?: string }) {
+export function MessageContent({ message, streaming, showReplyFooter, showFailureDetail = true, conversationId }: { message: ChatMessage; streaming: boolean; showReplyFooter: boolean; showFailureDetail?: boolean; conversationId?: string }) {
   const body = message.content.flatMap((block) => block.type === 'text' ? [block.text] : []).join('\n\n');
+  const failed = message.stopReason === 'error';
   return <>
   <div data-testid={message.role === 'assistant' ? 'assistant-message' : 'user-message'}>
     {message.content.map((block, index) => block.type === 'thinking'
@@ -56,6 +57,11 @@ export function MessageContent({ message, streaming, showFailureDetail = true, c
       : block.type === 'tool' ? <ToolCall key={block.tool.id} tool={block.tool} conversationId={conversationId} />
       : message.role === 'assistant' ? <div key={index} className={styles.markdown}><Markdown components={{ pre: CodeBlock }}>{block.text}</Markdown></div> : <div key={index}>{block.text}</div>)}
   </div>
-  <div className={styles.footer}><time>{new Date(message.timestamp).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}</time>{message.termination && <span>{message.termination === 'stopped' ? '已停止' : '已中断'}</span>}{message.role === 'assistant' && body && <CopyButton label="复制正文" text={() => body} />}{message.stopReason === 'error' && <span className={styles.failure}>回复失败{showFailureDetail && `：${message.errorMessage || '模型未能完成回复'}`}</span>}</div>
+  {(showReplyFooter || message.termination || failed) && <div className={styles.footer}>
+    {showReplyFooter && <time>{new Date(message.timestamp).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}</time>}
+    {message.termination && <span>{message.termination === 'stopped' ? '已停止' : '已中断'}</span>}
+    {showReplyFooter && message.role === 'assistant' && body && <CopyButton label="复制正文" text={() => body} />}
+    {failed && <span className={styles.failure}>回复失败{showFailureDetail && `：${message.errorMessage || '模型未能完成回复'}`}</span>}
+  </div>}
   </>;
 }

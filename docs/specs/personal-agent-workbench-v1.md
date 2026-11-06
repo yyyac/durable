@@ -1,5 +1,7 @@
 # 基于 pi-durable 的个人 Agent 工作台首版
 
+后续工作区与工具能力的范围扩展见 [GitHub Issue #11](https://github.com/yyyac/durable/issues/11)。本文保留首版范围记录；涉及工作区和工具的后续行为以该议题为准。
+
 ## Problem Statement
 
 个人用户需要一个能在本机日常使用的 Agent 工作台，通过熟悉的 Web 聊天界面管理会话、配置自己的模型服务，并持续看到模型实际提供的思考内容与正文。目前仓库只有研究与领域文档，没有可运行的前后端应用。

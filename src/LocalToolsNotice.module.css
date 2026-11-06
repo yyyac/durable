@@ -1,0 +1,11 @@
+.trigger { display: inline-flex; align-items: center; gap: 6px; color: #60656d; padding: 4px 8px; border-radius: 7px; font-size: 12px; }
+.trigger:hover { background: #00000008; }
+.overlay { position: fixed; inset: 0; background: #0004; z-index: 10; }
+.dialog { position: fixed; z-index: 11; top: 50%; left: 50%; transform: translate(-50%,-50%); width: min(480px,calc(100vw - 40px)); padding: 24px; border: 1px solid #00000021; border-radius: 16px; background: #fff; box-shadow: 0 12px 32px #1018281f; font-size: 14px; line-height: 1.6; }
+.dialog h2 { margin: 0 0 12px; font-size: 18px; }
+.dialog p { color: #60656d; }
+.path { padding: 8px 12px; background: #f7f8f9; border-radius: 8px; font-size: 12px; overflow-wrap: anywhere; }
+.actions { display: flex; justify-content: flex-end; gap: 12px; margin-top: 20px; }
+.actions button { padding: 8px 12px; border-radius: 8px; }
+.confirm { background: #202226; color: #fff; }
+.close { position: absolute; right: 16px; top: 16px; padding: 4px; }

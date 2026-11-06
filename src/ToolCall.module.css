@@ -1,0 +1,13 @@
+.tool { margin: 8px 0; font-size: 14px; line-height: 20px; }
+.head { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 20px; padding: 0; color: #000000ad; text-align: left; }
+.head > svg:first-child { width: 20px; flex: 0 0 20px; color: #0000006b; }
+.head > svg:last-child { flex: 0 0 14px; color: #0000006b; transition: transform .16s; }
+.name { flex: 0 0 auto; }
+.path { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.status { display: inline-flex; align-items: center; gap: 4px; flex: 0 0 auto; margin-left: auto; font-size: 12px; color: #0000006b; }
+.failed { color: #c84646; }
+.expanded { transform: rotate(90deg); }
+.body { position: relative; padding: 6px 0 4px 28px; }
+.body::before { content: ''; position: absolute; left: 10px; top: 0; bottom: 0; width: 1px; background: repeating-linear-gradient(to bottom,#00000021 0 2px,transparent 2px 4px); }
+.body pre { margin: 6px 0; color: #60656d; font: 12px/20px Consolas, monospace; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 360px; overflow: auto; }
+.directory { color: #0000006b; font-size: 12px; overflow-wrap: anywhere; }

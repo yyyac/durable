@@ -5,15 +5,16 @@ import { openAIResponsesApi } from '@earendil-works/pi-ai/api/openai-responses.l
 import { anthropicMessagesApi } from '@earendil-works/pi-ai/api/anthropic-messages.lazy';
 import type { Message } from '@earendil-works/pi-ai';
 import { estimateContextTokens, estimateMessageTokens } from '@earendil-works/pi-ai/utils/estimate';
-import { configure, ConversationBusy, createRegistry, Harness, LiveDoc, type Conversation, type ConversationView, type EntryRecord, type Cursor, type ConversationId, type Tx } from '@earendil-works/pi-durable';
+import { configure, ConversationBusy, createRegistry, defineExtension, Harness, LiveDoc, type Conversation, type ConversationView, type EntryRecord, type Cursor, type ConversationId, type Tx } from '@earendil-works/pi-durable';
 import { openNodeSqliteStorage } from '@earendil-works/pi-durable/storage/sqlite/node';
 import { join } from 'node:path';
-import type { ChatMessage, ConversationState, ContentBlock, ModelSelection } from '../src/types.js';
+import type { ChatMessage, ConversationState, ContentBlock, ModelSelection, ToolCallState } from '../src/types.js';
 import { SettingsStore, type StoredSettings } from './settings.js';
 import { addConversation, listConversations } from './conversations.js';
 import { canRetryReply } from '../src/types.js';
 import { ThinkingClock, timingKey, type ThinkingTimings } from './thinking-timing.js';
 import { allocateDefaultDirectory, inspectDirectory } from './directories.js';
+import { LocalToolsDoc, localEnvironment, localToolsEnabled, readTool } from './local-tools.js';
 
 export const context = BACKGROUND_CONTEXT;
 const STOP_ENTRY_KIND = 'workbench.stop';
@@ -47,25 +48,52 @@ function readableFailure(text: string | undefined) {
   } catch { return text; }
 }
 
-function displayMessage(id: string, message: Message, taskId: number | undefined, timings: ThinkingTimings): ChatMessage | null {
+function displayMessage(id: string, message: Message, taskId: number | undefined, timings: ThinkingTimings, tools: Map<string, ToolCallState>): ChatMessage | null {
   if (message.role !== 'user' && message.role !== 'assistant') return null;
   const content: ContentBlock[] = typeof message.content === 'string' ? [{ type: 'text', text: message.content }] : message.content.flatMap((block, index): ContentBlock[] => {
     if (block.type === 'text') return [{ type: 'text', text: block.text }];
     if (block.type === 'thinking' && block.thinking && !block.redacted) return [{ type: 'thinking', thinking: block.thinking, timing: timings.blocks[timingKey(taskId, message.timestamp, index)] }];
+    if (block.type === 'toolCall') {
+      const toolId = `${id}:${block.id}`;
+      return [{ type: 'tool', tool: { id: toolId, callId: block.id, name: block.name, status: 'pending', output: '', ...tools.get(toolId), arguments: block.arguments } }];
+    }
     return [];
   });
   return { id, role: message.role, content, timestamp: message.timestamp, ...(message.role === 'assistant' ? { stopReason: message.stopReason, errorMessage: readableFailure(message.errorMessage) } : {}) };
 }
 
 export function stateFrom(view: ConversationView, entries: readonly EntryRecord[], modelContext: readonly Message[], timings: ThinkingTimings = { blocks: {} }): ConversationState {
-  const live = view.docs['pi.live'] as { run?: { taskId: number }; generation?: { message?: Message }; runFailure?: { reason: string; detail?: string } } | undefined;
+  const live = view.docs['pi.live'] as { run?: { taskId: number }; generation?: { message?: Message }; tools?: Array<{ callId: string; name: string; status: 'pending' | 'running' | 'done'; output?: string; details?: { cwd?: string } }>; runFailure?: { reason: string; detail?: string } } | undefined;
+  const tools = new Map<string, ToolCallState>();
+  const latestCalls = new Map<string, string>();
+  // 工具结果归属于其前一个调用轮次，模型在后续轮次可以复用同一调用编号。
+  for (const entry of entries) for (const [index, message] of (entry.model ?? []).entries()) {
+    if (message.role === 'assistant') for (const block of message.content) if (block.type === 'toolCall') {
+      const id = `${entry.id}:${index}:${block.id}`;
+      tools.set(id, { id, callId: block.id, name: block.name, arguments: block.arguments, status: 'pending', output: '' });
+      latestCalls.set(block.id, id);
+    }
+    if (message.role === 'toolResult') {
+      const id = latestCalls.get(message.toolCallId);
+      const tool = id && tools.get(id);
+      if (!tool) continue;
+      const diagnostics = (entry.data as { diagnostics?: Array<{ code?: string }> } | undefined)?.diagnostics;
+      const details = message.details as { cwd?: string } | undefined;
+      tools.set(tool.id, { ...tool, status: diagnostics?.some((item) => item.code === 'aborted') ? 'stopped' : message.isError ? 'failed' : 'completed', output: message.content.flatMap((block) => block.type === 'text' ? [block.text] : ['[图片]']).join('\n'), cwd: details?.cwd });
+    }
+  }
+  for (const slot of live?.tools ?? []) {
+    const id = latestCalls.get(slot.callId);
+    const tool = id && tools.get(id);
+    if (tool && tool.status === 'pending') tools.set(tool.id, { ...tool, status: slot.status === 'done' ? 'completed' : slot.status, output: slot.output ?? '', cwd: slot.details?.cwd });
+  }
   const usage = estimateContextTokens(modelContext);
   const usageMessage = usage.lastUsageIndex === null ? undefined : modelContext[usage.lastUsageIndex];
   const partial = live?.generation?.message;
   const partialTokens = partial && !modelContext.some((message) => message.role === 'assistant' && message.timestamp === partial.timestamp) ? estimateMessageTokens(partial) : 0;
   const stopped = entries.filter((entry) => entry.kind === STOP_ENTRY_KIND).map((entry) => entry.data as StoppedAttempt);
   const messages = entries.flatMap((entry) => (entry.model ?? []).flatMap((message, index) => {
-    const projected = displayMessage(`${entry.id}:${index}`, message, entry.byTaskId, timings);
+    const projected = displayMessage(`${entry.id}:${index}`, message, entry.byTaskId, timings, tools);
     if (projected?.stopReason === 'aborted') {
       projected.termination = stopped.some((attempt) => attempt.taskId === entry.byTaskId && (attempt.timestamp === null || attempt.timestamp === message.timestamp)) ? 'stopped' : 'interrupted';
     }
@@ -74,7 +102,7 @@ export function stateFrom(view: ConversationView, entries: readonly EntryRecord[
   return {
     id: String(view.conversation.id),
     messages,
-    generation: live?.generation?.message ? displayMessage(`live:${live.run?.taskId}`, live.generation.message, live.run?.taskId, timings) : null,
+    generation: live?.generation?.message ? displayMessage(`live:${live.run?.taskId}`, live.generation.message, live.run?.taskId, timings, tools) : null,
     busy: Boolean(live?.run),
     contextUsage: {
       tokens: usage.tokens + partialTokens,
@@ -89,7 +117,9 @@ export class Runtime {
   private constructor(readonly harness: Harness, readonly root: Conversation, readonly settings: SettingsStore, readonly thinking: ThinkingClock) {}
   static async open(settings: SettingsStore) {
     const storage = await openNodeSqliteStorage(join(settings.directory, 'workbench.sqlite'));
-    const harness = await Harness.open(storage, { models: () => modelsFor(settings.value), registry: createRegistry(), settings: { stream: { maxRetries: 0 }, compaction: { enabled: false } } }, context);
+    const registry = createRegistry();
+    registry.install(defineExtension({ name: 'workbench.local-tools', tools: [readTool] }));
+    const harness = await Harness.open(storage, { models: () => modelsFor(settings.value), registry, env: localEnvironment, settings: { stream: { maxRetries: 0 }, compaction: { enabled: false } } }, context);
     const root = await harness.root(context, { agent: { tools: [], modelTools: [] } });
     await harness.commit((tx) => addConversation(tx, root.id), context);
     for (const item of await listConversations(harness, true)) {
@@ -125,9 +155,14 @@ export class Runtime {
     if (!directory.available) throw new Error('工作目录不可用，原目录可能已移动或删除；历史记录仍然保留');
     return directory.path;
   }
+  toolsEnabled() { return localToolsEnabled(this.harness, context); }
+  async enableTools() {
+    await this.harness.commit(async (tx) => { (await tx.doc(LocalToolsDoc)).enabled = true; }, context);
+  }
   private async configure(tx: Tx, conversation: Conversation, selection?: ModelSelection) {
     const { service, model } = this.settings.model(selection);
-    await configure(tx, conversation.id, { model: { provider: service.id, modelId: model.modelId }, thinkingLevel: model.supportsThinking ? 'medium' : 'off', tools: [], modelTools: [] });
+    const enabled = (await tx.doc(LocalToolsDoc)).enabled;
+    await configure(tx, conversation.id, { model: { provider: service.id, modelId: model.modelId }, thinkingLevel: model.supportsThinking ? 'medium' : 'off', tools: enabled ? [readTool] : [], modelTools: enabled ? [readTool] : [] });
   }
   async send(conversation: Conversation, content: string, selection?: ModelSelection) {
     const id = await conversation.commit(async (tx) => {

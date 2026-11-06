@@ -7,8 +7,9 @@ import { spawn, type ChildProcess } from 'node:child_process';
 import { once } from 'node:events';
 import { fileURLToPath } from 'node:url';
 
-type Plan = { chunks: Array<string | { thinking: string } | { redacted: string }>; pauseAfter?: number; delayMs?: number; failure?: { status: number; message: string }; streamError?: string; usage?: { prompt_tokens: number; completion_tokens: number; total_tokens: number } };
-type UpstreamRequest = { model: string; messages: Array<{ role: string; content: unknown }>; reasoning_effort?: string };
+type ToolChunk = { toolCall: { id?: string; name?: string; arguments: string; index?: number } };
+type Plan = { chunks: Array<string | { thinking: string } | { redacted: string } | ToolChunk>; pauseAfter?: number; delayMs?: number; failure?: { status: number; message: string }; streamError?: string; usage?: { prompt_tokens: number; completion_tokens: number; total_tokens: number } };
+type UpstreamRequest = { model: string; messages: Array<{ role: string; content: unknown; tool_call_id?: string }>; tools?: unknown[]; reasoning_effort?: string };
 
 export class Upstream {
   readonly requests: UpstreamRequest[] = [];
@@ -33,13 +34,17 @@ export class Upstream {
       await this.messages(res, plan);
       return;
     }
+    if (new URL(req.url ?? '/', 'http://localhost').pathname.endsWith('/responses')) {
+      await this.responses(res, plan);
+      return;
+    }
     this.chunk(res, { role: 'assistant' });
     for (const [index, block] of plan.chunks.entries()) {
-      this.chunk(res, typeof block === 'string' ? { content: block } : 'thinking' in block ? { reasoning_content: block.thinking } : { reasoning_details: [{ type: 'reasoning.encrypted', data: block.redacted }] });
+      this.chunk(res, typeof block === 'string' ? { content: block } : 'thinking' in block ? { reasoning_content: block.thinking } : 'toolCall' in block ? { tool_calls: [{ index: block.toolCall.index ?? 0, id: block.toolCall.id, type: 'function', function: { name: block.toolCall.name, arguments: block.toolCall.arguments } }] } : { reasoning_details: [{ type: 'reasoning.encrypted', data: block.redacted }] });
       if (plan.pauseAfter === index) await new Promise<void>((resolve) => this.releases.push(resolve));
       await new Promise((resolve) => setTimeout(resolve, plan.delayMs ?? 150));
     }
-    res.write(`data: ${JSON.stringify({ id: 'chat-test', object: 'chat.completion.chunk', created: 1, model: 'test-model', choices: [{ index: 0, delta: {}, finish_reason: 'stop' }] })}\n\n`);
+    res.write(`data: ${JSON.stringify({ id: 'chat-test', object: 'chat.completion.chunk', created: 1, model: 'test-model', choices: [{ index: 0, delta: {}, finish_reason: plan.chunks.some((block) => typeof block === 'object' && 'toolCall' in block) ? 'tool_calls' : 'stop' }] })}\n\n`);
     if (plan.usage) res.write(`data: ${JSON.stringify({ id: 'chat-test', object: 'chat.completion.chunk', created: 1, model: 'test-model', choices: [], usage: plan.usage })}\n\n`);
     res.end('data: [DONE]\n\n');
   });
@@ -52,15 +57,17 @@ export class Upstream {
     let blockIndex = -1;
     let previousType = '';
     for (const [index, block] of plan.chunks.entries()) {
-      const type = typeof block === 'string' ? 'text' : 'thinking' in block ? 'thinking' : 'redacted_thinking';
-      if (type !== previousType || type === 'redacted_thinking') {
+      const type = typeof block === 'string' ? 'text' : 'thinking' in block ? 'thinking' : 'toolCall' in block ? 'tool_use' : 'redacted_thinking';
+      const key = type === 'tool_use' && typeof block === 'object' && 'toolCall' in block ? `tool_use:${block.toolCall.index ?? 0}` : type;
+      if (key !== previousType || type === 'redacted_thinking') {
         if (blockIndex >= 0) event('content_block_stop', { index: blockIndex });
         blockIndex++;
-        event('content_block_start', { index: blockIndex, content_block: type === 'text' ? { type, text: '' } : type === 'thinking' ? { type, thinking: '' } : { type, data: typeof block === 'object' && 'redacted' in block ? block.redacted : '' } });
-        previousType = type;
+        event('content_block_start', { index: blockIndex, content_block: type === 'text' ? { type, text: '' } : type === 'thinking' ? { type, thinking: '' } : type === 'tool_use' && typeof block === 'object' && 'toolCall' in block ? { type, id: block.toolCall.id, name: block.toolCall.name, input: {} } : { type, data: typeof block === 'object' && 'redacted' in block ? block.redacted : '' } });
+        previousType = key;
       }
       if (typeof block === 'string') event('content_block_delta', { index: blockIndex, delta: { type: 'text_delta', text: block } });
       else if ('thinking' in block) event('content_block_delta', { index: blockIndex, delta: { type: 'thinking_delta', thinking: block.thinking } });
+      else if ('toolCall' in block) event('content_block_delta', { index: blockIndex, delta: { type: 'input_json_delta', partial_json: block.toolCall.arguments } });
       if (plan.pauseAfter === index) await new Promise<void>((resolve) => this.releases.push(resolve));
       await new Promise((resolve) => setTimeout(resolve, plan.delayMs ?? 150));
     }
@@ -70,8 +77,40 @@ export class Upstream {
       res.end();
       return;
     }
-    event('message_delta', { delta: { stop_reason: 'end_turn', stop_sequence: null }, usage: { output_tokens: 10 } });
+    event('message_delta', { delta: { stop_reason: plan.chunks.some((block) => typeof block === 'object' && 'toolCall' in block) ? 'tool_use' : 'end_turn', stop_sequence: null }, usage: { output_tokens: 10 } });
     event('message_stop', {});
+    res.end();
+  }
+  private async responses(res: ServerResponse, plan: Plan) {
+    const event = (type: string, value: object) => res.write(`event: ${type}\ndata: ${JSON.stringify({ type, ...value })}\n\n`);
+    const output: Array<{ id: string; type: string; status: string; call_id?: string; name?: string; arguments?: string; role?: string; content?: Array<{ type: string; text: string; annotations: unknown[] }> }> = [];
+    event('response.created', { response: { id: 'response-test', status: 'in_progress' } });
+    let key = '';
+    for (const [index, block] of plan.chunks.entries()) {
+      if (typeof block !== 'string' && !('toolCall' in block)) continue;
+      const nextKey = typeof block === 'string' ? 'text' : `tool:${block.toolCall.index ?? 0}`;
+      if (key !== nextKey) {
+        if (output.length) event('response.output_item.done', { output_index: output.length - 1, item: { ...output.at(-1), status: 'completed' } });
+        const item = typeof block === 'string'
+          ? { id: `message-${index}`, type: 'message', role: 'assistant', status: 'in_progress', content: [{ type: 'output_text', text: '', annotations: [] }] }
+          : { id: `function-${index}`, type: 'function_call', status: 'in_progress', call_id: block.toolCall.id, name: block.toolCall.name, arguments: '' };
+        output.push(item);
+        event('response.output_item.added', { output_index: output.length - 1, item });
+        key = nextKey;
+      }
+      const item = output.at(-1)!;
+      if (typeof block === 'string') {
+        item.content![0].text += block;
+        event('response.output_text.delta', { output_index: output.length - 1, content_index: 0, item_id: item.id, delta: block });
+      } else {
+        item.arguments += block.toolCall.arguments;
+        event('response.function_call_arguments.delta', { output_index: output.length - 1, item_id: item.id, delta: block.toolCall.arguments });
+      }
+      if (plan.pauseAfter === index) await new Promise<void>((resolve) => this.releases.push(resolve));
+      await new Promise((resolve) => setTimeout(resolve, plan.delayMs ?? 150));
+    }
+    if (output.length) event('response.output_item.done', { output_index: output.length - 1, item: { ...output.at(-1), status: 'completed' } });
+    event('response.completed', { response: { id: 'response-test', status: 'completed', output: output.map((item) => ({ ...item, status: 'completed' })), usage: { input_tokens: 10, output_tokens: 10, total_tokens: 20 } } });
     res.end();
   }
   enqueue(plan: Plan) { this.plans.push(plan); }

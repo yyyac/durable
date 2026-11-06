@@ -14,6 +14,11 @@ const settings = new SettingsStore(resolve(process.env.WORKBENCH_DATA_DIR ?? '.d
 await settings.load();
 const runtime = await Runtime.open(settings);
 app.get('/api/health', (c) => c.json({ ok: true }));
+app.get('/api/local-tools', async (c) => c.json({ enabled: await runtime.toolsEnabled() }));
+app.post('/api/local-tools/enable', async (c) => {
+  await runtime.enableTools();
+  return c.json({ enabled: true });
+});
 app.get('/api/settings', (c) => c.json(settings.summary()));
 app.put('/api/settings', async (c) => {
   try { return c.json(await settings.save(await c.req.json())); }

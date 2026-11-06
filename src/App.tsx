@@ -3,6 +3,7 @@ import { ArrowUp, Square, FolderOpen } from 'lucide-react';
 import { SettingsDialog } from './SettingsDialog';
 import { ModelSelector } from './ModelSelector';
 import { MessageContent } from './MessageContent';
+import { LocalToolsNotice } from './LocalToolsNotice';
 import { useFollowingScroll } from './useFollowingScroll';
 import { Sidebar } from './Sidebar';
 import { BrandLogo } from './BrandLogo';
@@ -74,9 +75,10 @@ export function App() {
       if (!response.ok) throw new Error((await response.json()).error);
     } catch (error) { if (currentId.current === openingId) setError((error as Error).message); }
   }
-  const visibleGeneration = state?.generation?.content.some((block) => (block.type === 'text' ? block.text : block.thinking).trim()) ? state.generation : null;
+  const visibleGeneration = state?.generation?.content.some((block) => block.type === 'tool' || (block.type === 'text' ? block.text : block.thinking).trim()) ? state.generation : null;
   const messages = [...(state?.messages ?? []), ...(visibleGeneration ? [visibleGeneration] : [])];
-  const requesting = (submitting || state?.busy) && !visibleGeneration;
+  const runningTool = messages.some((message) => message.content.some((block) => block.type === 'tool' && (block.tool.status === 'pending' || block.tool.status === 'running')));
+  const requesting = (submitting || state?.busy) && !visibleGeneration && !runningTool;
   const empty = !messages.length && !requesting;
   const directoryButton = state?.directory && <button type="button" aria-label="打开工作目录" title={state.directory.path} className={styles.directory} onClick={() => { void openDirectory(); }}><FolderOpen size={14} /><span>{state.directory.path}</span></button>;
   const { scrollRef, onScroll } = useFollowingScroll(state?.id, messages);
@@ -107,7 +109,7 @@ export function App() {
               if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); }
             }} />
           </div>
-          <div className={styles.composerActions}><span>{selected ? '' : '请先配置模型'}</span>{settings && selected && <ModelSelector settings={settings} contextUsage={state?.contextUsage ?? null} onSaved={setSettings} />}{state?.busy ? <button type="button" aria-label="停止生成" className={styles.send} disabled={stopping} onClick={() => { void stop(); }}><Square size={12} fill="currentColor" /></button> : <button type="submit" aria-label="发送消息" className={styles.send} disabled={!selected || !state || submitting || creating}><ArrowUp size={18} /></button>}</div>
+          <div className={styles.composerActions}><span>{selected ? <LocalToolsNotice directory={state?.directory?.path} /> : '请先配置模型'}</span>{settings && selected && <ModelSelector settings={settings} contextUsage={state?.contextUsage ?? null} onSaved={setSettings} />}{state?.busy ? <button type="button" aria-label="停止生成" className={styles.send} disabled={stopping} onClick={() => { void stop(); }}><Square size={12} fill="currentColor" /></button> : <button type="submit" aria-label="发送消息" className={styles.send} disabled={!selected || !state || submitting || creating}><ArrowUp size={18} /></button>}</div>
         </form>
       </div>
     </main>

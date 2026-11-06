@@ -1,3 +1,4 @@
+import { revealTool } from './tool-details';
 import { mkdir, readFile, rename, stat, symlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { test, expect } from './fixtures';
@@ -60,7 +61,7 @@ test('归档工作区隐藏侧栏但保留搜索历史，当前及其他页面�
   await expect(result).toContainText(directory);
   await page.screenshot({ path: testInfo.outputPath('workspace-archive-search.png') });
   await result.click();
-  await page.getByRole('button', { name: /read note.txt 已完成/ }).click();
+  await (await revealTool(page, /read note.txt 已完成/)).click();
   await expect(page.getByTestId('tool-output')).toContainText('归档前的真实文件');
   await workbench.stop();
   await workbench.start();
@@ -122,7 +123,7 @@ test('运行中及原运行结束后的待确认任务均阻止归档，停止�
     expect(blocked.status()).toBe(400);
     expect((await blocked.json()).error).toContain('待确认任务');
     await page.getByRole('button', { name: '停止本轮', exact: true }).click();
-    await expect(page.getByRole('button', { name: /write pending.txt 已停止/ })).toBeVisible();
+    await expect(await revealTool(page, /write pending.txt 已停止/)).toBeVisible();
     expect((await page.request.patch(`${workbench.url}/api/workspaces/${conversation.workspaceId}`, { data: { archived: true } })).ok()).toBe(true);
     await expect(page.getByText('工作区已归档，仅可查看历史。', { exact: true })).toBeVisible();
     const late = await page.request.post(oldConfirmation.url(), { data: oldConfirmation.postDataJSON() });

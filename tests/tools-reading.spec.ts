@@ -1,8 +1,42 @@
+import { revealTool } from './tool-details';
 import { writeFile, rename, open, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { test, expect } from './fixtures';
 import { configureModel } from './configure-model';
 import { readHandleProbe } from './windows-read-probe';
+
+test('连续调用与后续思考跨消息共用摘要，正文分隔工具组', async ({ page, workbench, upstream }) => {
+  await page.goto(workbench.url);
+  await configureModel(page, upstream.url, { protocol: 'anthropic-messages', supportsThinking: true });
+  const [conversation] = await (await page.request.get(`${workbench.url}/api/conversations`)).json();
+  await writeFile(join(conversation.defaultDirectory, 'note.txt'), '已找到内容');
+  await page.request.post(`${workbench.url}/api/local-tools/enable`);
+  const read = (id: string, path: string) => ({ toolCall: { id, name: 'read', arguments: JSON.stringify({ path }) } });
+  upstream.enqueue({ chunks: [{ thinking: '单独的开头思考' }, '准备读取', read('first', 'missing.txt')] });
+  upstream.enqueue({ chunks: [{ thinking: '改读已有文件' }, read('second', 'note.txt')] });
+  upstream.enqueue({ chunks: [{ thinking: '核对结果' }, '再读一次', read('third', 'note.txt')] });
+  upstream.enqueue({ chunks: ['最终回复'] });
+  await page.getByRole('textbox', { name: '输入消息' }).fill('依次读取文件');
+  await page.getByRole('button', { name: '发送消息' }).click();
+  await expect(page.getByRole('button', { name: '复制正文' })).toBeVisible();
+  const groups = page.getByTestId('activity-group');
+  await expect(groups).toHaveCount(2);
+  const first = groups.first();
+  const summary = first.getByRole('button', { name: '读取文件 2 次（1 失败）', exact: true });
+  await expect(summary).toHaveAttribute('aria-expanded', 'false');
+  await expect(page.getByRole('button', { name: /思考过程/ })).toHaveCount(1);
+  await summary.click();
+  await expect(first.getByRole('button', { name: /思考过程/ })).toHaveCount(2);
+  await expect(first.getByRole('button', { name: /read missing.txt 失败/ })).toBeVisible();
+  await expect(first.getByRole('button', { name: /read note.txt 已完成/ })).toBeVisible();
+  await first.getByRole('button', { name: /思考过程/ }).first().click();
+  await expect(first.getByText('改读已有文件')).toBeVisible();
+  await summary.click();
+  await expect(first.getByText('改读已有文件')).toBeHidden();
+  await expect(page.getByText('再读一次', { exact: true })).toBeVisible();
+  await expect(groups.last().getByRole('button', { name: '读取文件 1 次' })).toHaveAttribute('aria-expanded', 'false');
+  await expect(page.getByText('最终回复', { exact: true })).toBeVisible();
+});
 
 test('首次启用前纯聊天，确认后从独立目录读取真实文件并将结果交回模型，信任跨重启保留', async ({ page, workbench, upstream }) => {
   await page.goto(workbench.url);
@@ -25,7 +59,7 @@ test('首次启用前纯聊天，确认后从独立目录读取真实文件并�
   await page.getByRole('textbox', { name: '输入消息' }).fill('读取 note.txt');
   await page.getByRole('button', { name: '发送消息' }).click();
   await expect(page.getByTestId('assistant-message').last()).toHaveText('已读到真实文件');
-  const tool = page.getByRole('button', { name: /read note.txt 已完成/ });
+  const tool = await revealTool(page, /read note.txt 已完成/);
   await expect(tool).toHaveCount(1);
   await tool.click();
   await expect(page.getByTestId('tool-output')).toContainText('真实文件内容：春江潮水');
@@ -35,7 +69,7 @@ test('首次启用前纯聊天，确认后从独立目录读取真实文件并�
   await workbench.start();
   await page.reload();
   await expect(page.getByRole('button', { name: '启用本机工具', exact: true })).toHaveCount(0);
-  await expect(page.getByRole('button', { name: /read note.txt 已完成/ })).toHaveCount(1);
+  await expect(page.getByRole('button', { name: /read note.txt 已完成/, includeHidden: true })).toHaveCount(1);
   await page.getByRole('button', { name: '新建会话', exact: true }).click();
   await expect(page.getByRole('button', { name: '启用本机工具', exact: true })).toHaveCount(0);
   expect(upstream.requests).toHaveLength(3);
@@ -53,7 +87,7 @@ test('Anthropic 协议的分段工具调用读取真实文件并按原调用返�
   await page.getByRole('textbox', { name: '输入消息' }).fill('读取协议文件');
   await page.getByRole('button', { name: '发送消息' }).click();
   await expect(page.getByTestId('assistant-message').last()).toHaveText('Anthropic读取完成');
-  await expect(page.getByRole('button', { name: /read protocol.txt 已完成/ })).toHaveCount(1);
+  await expect(page.getByRole('button', { name: /read protocol.txt 已完成/, includeHidden: true })).toHaveCount(1);
   expect(JSON.stringify(upstream.requests[1].messages)).toContain('Anthropic真实读取结果');
   expect(JSON.stringify(upstream.requests[1].messages)).toContain('anthropic-read');
 });
@@ -70,7 +104,7 @@ test('Responses 协议读取文件后把真实结果与调用身份送入后续�
   await page.getByRole('textbox', { name: '输入消息' }).fill('读取 Responses 文件');
   await page.getByRole('button', { name: '发送消息' }).click();
   await expect(page.getByTestId('assistant-message').last()).toHaveText('Responses读取完成');
-  await expect(page.getByRole('button', { name: /read responses.txt 已完成/ })).toHaveCount(1);
+  await expect(page.getByRole('button', { name: /read responses.txt 已完成/, includeHidden: true })).toHaveCount(1);
   expect(JSON.stringify(upstream.requests[1])).toContain('Responses真实文件结果');
   expect(JSON.stringify(upstream.requests[1])).toContain('responses-read');
 });
@@ -87,7 +121,7 @@ test('取消启用后后端拒绝模型擅自读取，本机文件内容不会�
   await page.getByRole('textbox', { name: '输入消息' }).fill('保持纯聊天');
   await page.getByRole('button', { name: '发送消息' }).click();
   await expect(page.getByTestId('assistant-message').last()).toHaveText('未获得工具权限');
-  await expect(page.getByRole('button', { name: /read private.txt 失败/ })).toHaveCount(1);
+  await expect(page.getByRole('button', { name: /read private.txt 失败/, includeHidden: true })).toHaveCount(1);
   expect(upstream.requests[0].tools ?? []).toHaveLength(0);
   expect(JSON.stringify(upstream.requests[1].messages)).not.toContain('不得在未启用时读取的文件内容');
   expect(JSON.stringify(upstream.requests[1].messages)).toContain('not available');
@@ -106,14 +140,14 @@ test('不存在文件返回真实失败，工作目录失效在准入时拒绝�
   await page.getByRole('textbox', { name: '输入消息' }).fill('读取 missing.txt');
   await page.getByRole('button', { name: '发送消息' }).click();
   await expect(page.getByTestId('assistant-message').last()).toHaveText('读取失败，文件不存在');
-  await page.getByRole('button', { name: /read missing.txt 失败/ }).click();
+  await (await revealTool(page, /read missing.txt 失败/)).click();
   await expect(page.getByTestId('tool-output')).toContainText('missing.txt');
   expect(JSON.stringify(upstream.requests[1].messages)).toContain('missing.txt');
   await rename(conversation.defaultDirectory, `${conversation.defaultDirectory}-moved`);
   await page.getByRole('textbox', { name: '输入消息' }).fill('读取 note.txt');
   await page.getByRole('button', { name: '发送消息' }).click();
   await expect(page.getByRole('alert')).toContainText('工作目录不可用');
-  await expect(page.getByRole('button', { name: /read note.txt/ })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /read note.txt/, includeHidden: true })).toHaveCount(0);
   expect(upstream.requests).toHaveLength(2);
   await expect(stat(conversation.defaultDirectory)).rejects.toThrow();
 });
@@ -144,14 +178,14 @@ test('真实文件读取已打开后进程崩溃自动重放读取，完成调�
     await writeFile(path, '中断后文件已经更新\n自动恢复读到的新尾行');
     await workbench.start();
     await expect(page.getByTestId('assistant-message').last()).toHaveText('恢复后读取完成', { timeout: 12_000 });
-    await page.getByRole('button', { name: /read recovery.txt 已完成/ }).click();
+    await (await revealTool(page, /read recovery.txt 已完成/)).click();
     await expect(page.getByTestId('tool-output')).toHaveText('自动恢复读到的新尾行');
     expect(JSON.stringify(upstream.requests[1].messages)).toContain('自动恢复读到的新尾行');
     expect(JSON.stringify(upstream.requests[1].messages)).not.toContain('崩溃前尚未返回的尾行');
     await workbench.crash();
     await workbench.start();
     await page.reload();
-    await expect(page.getByRole('button', { name: /read recovery.txt 已完成/ })).toHaveCount(1);
+    await expect(page.getByRole('button', { name: /read recovery.txt 已完成/, includeHidden: true })).toHaveCount(1);
     await expect(page.getByTestId('assistant-message').last()).toHaveText('恢复后读取完成');
     expect(upstream.requests).toHaveLength(2);
   } finally { probe.close(); }
@@ -179,12 +213,12 @@ test('运行中的真实读取可停止，卡片保留已停止状态并且不�
     expect(await probe.check()).toBe(true);
     expect(await page.getByRole('status', { name: '正在请求模型' }).count()).toBe(0);
     await page.getByRole('button', { name: '停止生成', exact: true }).click();
-    await expect(page.getByRole('button', { name: /read stop-read.txt 已停止/ })).toHaveCount(1);
+    await expect(page.getByRole('button', { name: /read stop-read.txt 已停止/, includeHidden: true })).toHaveCount(1);
     await expect(page.getByRole('button', { name: '发送消息', exact: true })).toBeEnabled();
     expect((await stat(path)).size).toBeGreaterThan(1024 * 1024 * 1024);
     expect(upstream.requests).toHaveLength(1);
     await page.reload();
-    await expect(page.getByRole('button', { name: /read stop-read.txt 已停止/ })).toHaveCount(1);
+    await expect(page.getByRole('button', { name: /read stop-read.txt 已停止/, includeHidden: true })).toHaveCount(1);
     upstream.enqueue({ chunks: ['停止后可以继续聊天'] });
     await page.getByRole('textbox', { name: '输入消息' }).fill('继续聊天');
     await page.getByRole('button', { name: '发送消息' }).click();
@@ -211,7 +245,7 @@ test('思考正文和工具按执行顺序显示，切换刷新接续后保留�
   expect(beforeSwitch.indexOf('思考过程')).toBeLessThan(beforeSwitch.indexOf('读取前正文'));
   expect(beforeSwitch.indexOf('读取前正文')).toBeLessThan(beforeSwitch.indexOf('read'));
   expect(beforeSwitch.indexOf('read')).toBeLessThan(beforeSwitch.indexOf('读取后首段'));
-  await expect(page.getByRole('button', { name: /read ordered.txt 已完成/ })).toHaveAttribute('aria-expanded', 'false');
+  await expect(await revealTool(page, /read ordered.txt 已完成/)).toHaveAttribute('aria-expanded', 'false');
   await page.getByRole('button', { name: '新建会话', exact: true }).click();
   upstream.enqueue({ chunks: ['另一个会话继续可用'] });
   await page.getByRole('textbox', { name: '输入消息' }).fill('另一段独立对话');
@@ -220,7 +254,7 @@ test('思考正文和工具按执行顺序显示，切换刷新接续后保留�
   await page.getByRole('button', { name: '验证工具顺序', exact: true }).click();
   await expect(page.getByTestId('assistant-message').last()).toHaveText('读取后首段');
   await page.reload();
-  const tool = page.getByRole('button', { name: /read ordered.txt 已完成/ });
+  const tool = await revealTool(page, /read ordered.txt 已完成/);
   await tool.click();
   await expect(page.getByTestId('tool-output')).toHaveText('真实输出头\n真实输出尾');
   upstream.release();
@@ -252,12 +286,12 @@ test('模型在不同轮次复用调用编号时，两张工具卡片各自保�
   await page.getByRole('textbox', { name: '输入消息' }).fill('再读取 second.txt');
   await page.getByRole('button', { name: '发送消息' }).click();
   await expect(page.getByTestId('assistant-message').last()).toHaveText('第二轮完成');
-  await page.getByRole('button', { name: /read first.txt 已完成/ }).click();
-  await page.getByRole('button', { name: /read second.txt 已完成/ }).click();
+  await (await revealTool(page, /read first.txt 已完成/)).click();
+  await (await revealTool(page, /read second.txt 已完成/)).click();
   await expect(page.getByTestId('tool-output').nth(0)).toHaveText('第一份独立读取内容');
   await expect(page.getByTestId('tool-output').nth(1)).toHaveText('第二份独立读取内容');
   await page.reload();
-  await page.getByRole('button', { name: /read first.txt 已完成/ }).click();
+  await (await revealTool(page, /read first.txt 已完成/)).click();
   await expect(page.getByTestId('tool-output').nth(0)).toHaveText('第一份独立读取内容');
   await expect(page.locator('article').filter({ has: page.getByTestId('user-message') }).locator('time')).toHaveCount(2);
   const replies = page.locator('article').filter({ has: page.getByTestId('assistant-message') });

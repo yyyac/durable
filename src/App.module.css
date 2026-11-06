@@ -54,6 +54,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 2px
 .userMessage { display: flex; flex-direction: column; align-items: flex-end; }
 .userMessage > div:first-child { padding: 8px 13px; background: #f4f4f5; border-radius: 14px; max-width: 85%; }
 .assistantMessage { padding: 0 2px; }
+.transcript .assistantMessage:has(+ .assistantMessage) { margin-bottom: 12px; }
 .requesting { display: flex; align-items: center; gap: 10px; max-width: 728px; margin: 0 auto 24px; padding: 0 2px; min-height: 28px; color: #92969c; font-size: 14px; line-height: 22px; }
 .requestLogo { display: block; flex-shrink: 0; animation: requestPulse 1.4s ease-in-out infinite; }
 @keyframes requestPulse { 0%, 100% { opacity: .5; transform: scale(.96); } 50% { opacity: 1; transform: scale(1); } }

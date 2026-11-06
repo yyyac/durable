@@ -1,3 +1,4 @@
+import { revealTool } from './tool-details';
 import { mkdir, rename, readFile, writeFile, stat, symlink } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { Page } from '@playwright/test';
@@ -47,7 +48,7 @@ test('普通默认目录显式重新定位保留会话历史与草稿，真实�
   await expect(page.getByRole('textbox', { name: '输入消息' })).toHaveValue('修复过程中保留的草稿');
   await expect(page.getByRole('button', { name: '打开工作目录', exact: true })).toHaveAttribute('title', target);
   await expect(page.getByText('工作目录不可用', { exact: true })).toHaveCount(0);
-  await page.getByRole('button', { name: /read .*original.txt 已完成/ }).click();
+  await (await revealTool(page, /read .*original.txt 已完成/)).click();
   expect(JSON.parse(await page.getByLabel('工具参数').first().innerText())).toEqual({ path: originalPath });
   upstream.enqueue({ chunks: [{ toolCall: { id: 'relocated-read', name: 'read', arguments: '{"path":"original.txt"}' } }] });
   upstream.enqueue({ chunks: [{ toolCall: { id: 'relocated-write', name: 'write', arguments: '{"path":"created.txt","content":"新目录创建内容"}' } }] });
@@ -143,7 +144,7 @@ test('工作区另一会话运行命令时拒绝重新定位，真正停止后�
   expect((await rejected.json()).error).toContain('未完成任务');
   expect((await (await page.request.get(`${workbench.url}/api/workspaces`)).json())[0].directory).toBe(directory);
   expect((await page.request.post(`${workbench.url}/api/conversations/${second.id}/stop`)).status()).toBe(200);
-  await expect(page.getByRole('button', { name: /powershell .*已停止/ })).toBeVisible();
+  await expect(await revealTool(page, /powershell .*已停止/)).toBeVisible();
   expect((await page.request.post(`${workbench.url}/api/conversations/${first.id}/directory/relocate`, { data: input })).status()).toBe(200);
   expect(upstream.requests).toHaveLength(1);
   await expect(page.getByTestId('tool-output')).toContainText('停止前的真实命令输出');
@@ -192,7 +193,7 @@ test('真实中断写入待确认时不能重新定位，停止后旧确认在�
     const oldConfirmation = await posted;
     await expect(page.getByRole('alert')).toContainText('工作目录不可用');
     await page.getByRole('button', { name: '停止本轮', exact: true }).click();
-    await expect(page.getByRole('button', { name: /write uncertain.txt 已停止/ })).toBeVisible();
+    await expect(await revealTool(page, /write uncertain.txt 已停止/)).toBeVisible();
     const dialog = await previewRelocation(page, target);
     await dialog.getByRole('button', { name: '确认重新定位', exact: true }).click();
     await expect(dialog).not.toBeVisible();
@@ -200,7 +201,7 @@ test('真实中断写入待确认时不能重新定位，停止后旧确认在�
     expect(await readFile(join(target, 'uncertain.txt'))).toEqual(preserved);
     await workbench.stop(); await workbench.start(); await page.reload();
     expect((await page.request.post(oldConfirmation.url(), { data: oldConfirmation.postDataJSON() })).status()).toBe(409);
-    await expect(page.getByRole('button', { name: /write uncertain.txt 已停止/ })).toBeVisible();
+    await expect(await revealTool(page, /write uncertain.txt 已停止/)).toBeVisible();
     expect(await readFile(join(target, 'uncertain.txt'))).toEqual(preserved);
     expect(upstream.requests).toHaveLength(1);
     await expect(stat(session.defaultDirectory)).rejects.toThrow();

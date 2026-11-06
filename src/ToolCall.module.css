@@ -1,4 +1,4 @@
-.tool { margin: 8px 0; font-size: 14px; line-height: 20px; }
+.tool { font-size: 14px; line-height: 20px; }
 .head { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 20px; padding: 0; color: #000000ad; text-align: left; }
 .head > svg:first-child { width: 20px; flex: 0 0 20px; color: #0000006b; }
 .head > svg:last-child { flex: 0 0 14px; color: #0000006b; transition: transform .16s; }

@@ -4,6 +4,7 @@ import Markdown from 'react-markdown';
 import type { ChatMessage, ThinkingTiming } from './types';
 import styles from './MessageContent.module.css';
 import { ToolCall } from './ToolCall';
+import { toolSummary, type ActivityItem, type TranscriptRow } from './transcript';
 
 function CopyButton({ label, text }: { label: string; text: () => string }) {
   const [copied, setCopied] = useState(false);
@@ -47,15 +48,36 @@ function ThinkingBlock({ text, active, timing }: { text: string; active: boolean
   </section>;
 }
 
-export function MessageContent({ message, streaming, showReplyFooter, showFailureDetail = true, conversationId }: { message: ChatMessage; streaming: boolean; showReplyFooter: boolean; showFailureDetail?: boolean; conversationId?: string }) {
+function ActivityRows({ items, conversationId }: { items: ActivityItem[]; conversationId?: string }) {
+  const id = useId();
+  const [open, setOpen] = useState<boolean | null>(null);
+  const tools = items.flatMap(({ block }) => block.type === 'tool' ? [block.tool] : []);
+  const rows = items.map(({ key, block, active }) => block.type === 'thinking'
+    ? <ThinkingBlock key={key} text={block.thinking} timing={block.timing} active={active} />
+    : <ToolCall key={key} tool={block.tool} conversationId={conversationId} />);
+  if (!tools.length) return <>{rows}</>;
+
+  const awaiting = tools.some(tool => tool.status === 'awaiting');
+  const running = tools.some(tool => ['pending', 'running', 'retrying', 'stopping'].includes(tool.status));
+  const expanded = awaiting || (open ?? (running || items.some(item => item.active && item.block.type === 'thinking')));
+  return <section data-testid="activity-group">
+    <button type="button" className={styles.activitySummary} aria-expanded={expanded} aria-controls={id} aria-disabled={awaiting}
+      onClick={() => { if (!awaiting) setOpen(!expanded); }}>
+      <span>{toolSummary(tools)}{awaiting ? ' · 待确认' : running ? ' · 执行中' : ''}</span>
+      <ChevronRight size={14} className={expanded ? styles.expanded : undefined} />
+    </button>
+    <div id={id} hidden={!expanded} className={styles.activityItems}>{rows}</div>
+  </section>;
+}
+
+export function MessageContent({ message, rows, showReplyFooter, showFailureDetail = true, conversationId }: { message: ChatMessage; rows: TranscriptRow[]; showReplyFooter: boolean; showFailureDetail?: boolean; conversationId?: string }) {
   const body = message.content.flatMap((block) => block.type === 'text' ? [block.text] : []).join('\n\n');
   const failed = message.stopReason === 'error';
   return <>
-  <div data-testid={message.role === 'assistant' ? 'assistant-message' : 'user-message'}>
-    {message.content.map((block, index) => block.type === 'thinking'
-      ? <ThinkingBlock key={index} text={block.thinking} timing={block.timing} active={streaming && index === message.content.length - 1} />
-      : block.type === 'tool' ? <ToolCall key={block.tool.id} tool={block.tool} conversationId={conversationId} />
-      : message.role === 'assistant' ? <div key={index} className={styles.markdown}><Markdown components={{ pre: CodeBlock }}>{block.text}</Markdown></div> : <div key={index}>{block.text}</div>)}
+  <div className={styles.rows} data-testid={message.role === 'assistant' ? 'assistant-message' : 'user-message'}>
+    {rows.map(row => row.type === 'activity'
+      ? <ActivityRows key={row.key} items={row.items} conversationId={conversationId} />
+      : message.role === 'assistant' ? <div key={row.key} className={styles.markdown}><Markdown components={{ pre: CodeBlock }}>{row.text}</Markdown></div> : <div key={row.key}>{row.text}</div>)}
   </div>
   {(showReplyFooter || message.termination || failed) && <div className={styles.footer}>
     {showReplyFooter && <time>{new Date(message.timestamp).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}</time>}

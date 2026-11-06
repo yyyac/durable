@@ -1,3 +1,4 @@
+import { revealTool } from './tool-details';
 import { access, mkdir, readFile, writeFile, rename } from 'node:fs/promises';
 import { join } from 'node:path';
 import { test, expect } from './fixtures';
@@ -52,7 +53,7 @@ test('工作区命令摘要与参数可辨，非零退出和真实执行失败�
   await page.getByRole('textbox', { name: '输入消息' }).fill('运行工作区命令');
   await page.getByRole('button', { name: '发送消息' }).click();
   await expect(page.getByTestId('assistant-message').last()).toHaveText('收到了退出失败');
-  await page.getByRole('button', { name: /powershell .*工作区失败前输出.*失败/ }).click();
+  await (await revealTool(page, /powershell .*工作区失败前输出.*失败/)).click();
   expect(JSON.parse(await page.getByLabel('工具参数').innerText())).toEqual({ command });
   await expect(page.getByTestId('tool-output')).toContainText('退出码：7');
   await expect(page.getByTestId('tool-output')).toContainText(directory);
@@ -65,7 +66,7 @@ test('工作区命令摘要与参数可辨，非零退出和真实执行失败�
   expect(JSON.stringify(upstream.requests[3].messages)).toContain('超时前中文');
   expect(JSON.stringify(upstream.requests[3].messages)).toContain('Command timed out after 1 seconds');
   await page.reload();
-  await expect(page.getByRole('button', { name: /powershell .*失败/ })).toHaveCount(2);
+  await expect(page.getByRole('button', { name: /powershell .*失败/, includeHidden: true })).toHaveCount(2);
 });
 
 test('停止真实 PowerShell 及子孙进程，保留已有输出与文件且停止后不再生成延迟标记', async ({ page, workbench, upstream }) => {
@@ -85,7 +86,7 @@ test('停止真实 PowerShell 及子孙进程，保留已有输出与文件且�
   await page.getByRole('button', { name: /powershell .*运行中/ }).click();
   await expect(page.getByTestId('tool-output')).toContainText('孙进程已启动');
   await page.getByRole('button', { name: '停止生成', exact: true }).click();
-  await expect(page.getByRole('button', { name: /powershell .*已停止/ })).toHaveCount(1);
+  await expect(page.getByRole('button', { name: /powershell .*已停止/, includeHidden: true })).toHaveCount(1);
   await expect(page.getByTestId('tool-output')).toContainText('命令原有输出');
   expect(await readFile(join(session.defaultDirectory, 'attempts.txt'), 'utf8')).toBe('执行一次\n');
   await page.waitForTimeout(4500);
@@ -120,7 +121,7 @@ test('真实后端崩溃终止命令孙进程，重启持久等待确认且停�
     await expect(page.getByRole('button', { name: '确认重试', exact: true })).toBeVisible();
     expect((await page.request.post(`${workbench.url}/api/conversations/${session.id}/messages`, { data: { content: '不能绕过命令等待' } })).status()).toBe(409);
     await page.getByRole('button', { name: '停止本轮', exact: true }).click();
-    await expect(page.getByRole('button', { name: /powershell .*已停止/ })).toHaveCount(1);
+    await expect(page.getByRole('button', { name: /powershell .*已停止/, includeHidden: true })).toHaveCount(1);
     await page.waitForTimeout(4500);
     await expect(access(join(session.defaultDirectory, 'late-effect.txt'))).rejects.toThrow();
     expect(await readFile(join(session.defaultDirectory, 'attempts.txt'), 'utf8')).toBe('执行一次\n');
@@ -177,7 +178,7 @@ test('工作区命令确认重试受十个名额与原会话互斥约束，重�
     await workbench.crash();
     await workbench.start();
     await page.reload();
-    await expect(page.getByRole('button', { name: /powershell .*已完成/ })).toHaveCount(1);
+    await expect(page.getByRole('button', { name: /powershell .*已完成/, includeHidden: true })).toHaveCount(1);
     expect(await readFile(join(directory, 'attempts.txt'), 'utf8')).toBe('执行一次\n执行一次\n');
     await expect(access(join(directory, 'late-effect.txt'))).rejects.toThrow();
   } finally { effect.close(); upstream.release(); }
@@ -209,7 +210,7 @@ test('未启用不能执行命令，只读外观命令崩溃也必须确认，�
   await expect(page.getByRole('button', { name: '确认重试', exact: true })).toBeVisible({ timeout: 12_000 });
   expect(upstream.requests).toHaveLength(3);
   await page.getByRole('button', { name: '停止本轮', exact: true }).click();
-  await expect(page.getByRole('button', { name: /powershell .*Get-Location.*已停止/ })).toHaveCount(1);
+  await expect(page.getByRole('button', { name: /powershell .*Get-Location.*已停止/, includeHidden: true })).toHaveCount(1);
   const moved = `${session.defaultDirectory}-moved`;
   upstream.enqueue({ chunks: [{ toolCall: { id: 'invalid-cwd-command', name: 'powershell', arguments: JSON.stringify({ command: `[System.IO.File]::WriteAllText(${quote(marker)}, '不能启动')` }) } }], pauseAfter: 0 });
   upstream.enqueue({ chunks: ['失效目录命令已拒绝'] });
@@ -235,7 +236,7 @@ test('长命令输出保留尾部，超时失败仍保留完整输出日志供�
   await page.getByRole('textbox', { name: '输入消息' }).fill('运行长输出命令并超时');
   await page.getByRole('button', { name: '发送消息' }).click();
   await expect(page.getByTestId('assistant-message').last()).toHaveText('已收到长输出和超时诊断', { timeout: 30_000 });
-  await page.getByRole('button', { name: /powershell .*失败/ }).click();
+  await (await revealTool(page, /powershell .*失败/)).click();
   await expect(page.getByTestId('tool-output')).toContainText('末尾中文🙂');
   await expect(page.getByTestId('tool-output')).toContainText('Full output:');
   const output = await page.getByTestId('tool-output').innerText();
@@ -247,6 +248,6 @@ test('长命令输出保留尾部，超时失败仍保留完整输出日志供�
   expect(full).toContain('末尾中文🙂');
   expect(JSON.stringify(upstream.requests[1].messages)).toContain('Full output:');
   await page.reload();
-  await page.getByRole('button', { name: /powershell .*失败/ }).click();
+  await (await revealTool(page, /powershell .*失败/)).click();
   await expect(page.getByTestId('tool-output')).toContainText(fullPath!);
 });

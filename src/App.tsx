@@ -3,6 +3,7 @@ import { ArrowUp, Square, FolderOpen } from 'lucide-react';
 import { SettingsDialog } from './SettingsDialog';
 import { ModelSelector } from './ModelSelector';
 import { MessageContent } from './MessageContent';
+import { transcriptRows } from './transcript';
 import { LocalToolsNotice } from './LocalToolsNotice';
 import { WorkspaceSelector } from './WorkspaceSelector';
 import { DirectoryRelocation } from './DirectoryRelocation';
@@ -98,6 +99,7 @@ export function App() {
   }
   const visibleGeneration = state?.generation?.content.some((block) => block.type === 'tool' || (block.type === 'text' ? block.text : block.thinking).trim()) ? state.generation : null;
   const messages = [...(state?.messages ?? []), ...(visibleGeneration ? [visibleGeneration] : [])];
+  const rows = transcriptRows(messages, visibleGeneration);
   const runningTool = messages.some((message) => message.content.some((block) => block.type === 'tool' && ['pending', 'running', 'awaiting', 'retrying', 'stopping'].includes(block.tool.status)));
   const requesting = (submitting || state?.busy) && !visibleGeneration && !runningTool && !state?.awaitingConfirmation;
   const empty = !messages.length && !requesting;
@@ -117,8 +119,9 @@ export function App() {
         {messages.length || requesting ? <div className={styles.transcript}>{messages.map((message, index) => {
           const next = messages[index + 1];
           const showReplyFooter = message.role === 'user' || (next ? next.role === 'user' : state?.busy === false);
+          if (!rows[index].length && !showReplyFooter && !message.termination && message.stopReason !== 'error') return null;
           return <article key={`${state?.id}:${message.role}:${message.timestamp}`} className={message.role === 'user' ? styles.userMessage : styles.assistantMessage}>
-            <MessageContent message={message} conversationId={state?.id} streaming={message === state?.generation} showReplyFooter={showReplyFooter} showFailureDetail={state?.busy || !canRetryReply(state?.failure) || message !== state?.messages.at(-1)} />
+            <MessageContent message={message} rows={rows[index]} conversationId={state?.id} showReplyFooter={showReplyFooter} showFailureDetail={state?.busy || !canRetryReply(state?.failure) || message !== state?.messages.at(-1)} />
           </article>;
         })}{requesting && <div role="status" aria-label="正在请求模型" className={styles.requesting}><BrandLogo size={22} className={styles.requestLogo} /><span>请求中…</span></div>}</div> : <div className={styles.empty}><h2><BrandLogo size={46} />Agent 工作台</h2>{!selected && <><p>尚未配置模型</p><p>请先在设置中添加模型服务。</p></>}</div>}
         {!state?.busy && canRetryReply(state?.failure) && <div role="alert" className={styles.failureNotice}>

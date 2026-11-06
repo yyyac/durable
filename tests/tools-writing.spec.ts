@@ -1,3 +1,4 @@
+import { revealTool } from './tool-details';
 import { readFile, rename, mkdir, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { test, expect } from './fixtures';
@@ -17,14 +18,14 @@ test('启用后模型能在普通会话目录创建真实新文件，已有同�
   await page.getByRole('button', { name: '发送消息' }).click();
   await expect(page.getByTestId('assistant-message').last()).toHaveText('新文件已创建');
   expect(await readFile(join(conversation.defaultDirectory, 'new.txt'), 'utf8')).toBe('首次真实写入');
-  await page.getByRole('button', { name: /write new.txt 已完成/ }).click();
+  await (await revealTool(page, /write new.txt 已完成/)).click();
   await expect(page.getByTestId('tool-output')).toContainText('new.txt');
   upstream.enqueue({ chunks: [{ toolCall: { id: 'do-not-overwrite', name: 'write', arguments: '{"path":"new.txt","content":"不应覆盖"}' } }] });
   upstream.enqueue({ chunks: ['目标已存在，已保留原内容'] });
   await page.getByRole('textbox', { name: '输入消息' }).fill('再次创建同名文件');
   await page.getByRole('button', { name: '发送消息' }).click();
   await expect(page.getByTestId('assistant-message').last()).toHaveText('目标已存在，已保留原内容');
-  await expect(page.getByRole('button', { name: /write new.txt 失败/ })).toHaveCount(1);
+  await expect(page.getByRole('button', { name: /write new.txt 失败/, includeHidden: true })).toHaveCount(1);
   expect(await readFile(join(conversation.defaultDirectory, 'new.txt'), 'utf8')).toBe('首次真实写入');
   expect(JSON.stringify(upstream.requests[3].messages)).toContain('当前会话成功读取');
 });
@@ -51,7 +52,7 @@ test('写入已产生真实文件效果后崩溃会持久等待确认，停止�
     await page.reload();
     await expect(page.getByRole('button', { name: '确认重试', exact: true })).toBeVisible();
     await page.getByRole('button', { name: '停止本轮', exact: true }).click();
-    await expect(page.getByRole('button', { name: /write uncertain.txt 已停止/ })).toHaveCount(1);
+    await expect(page.getByRole('button', { name: /write uncertain.txt 已停止/, includeHidden: true })).toHaveCount(1);
     await expect(page.getByRole('button', { name: '发送消息', exact: true })).toBeEnabled();
     expect(await readFile(join(conversation.defaultDirectory, 'uncertain.txt'))).toEqual(before);
     expect(upstream.requests).toHaveLength(1);
@@ -96,7 +97,7 @@ test('确认重试重新检查同名文件，并发重复确认只执行一次�
     await workbench.crash();
     await workbench.start();
     await page.reload();
-    await expect(page.getByRole('button', { name: /write retry.txt 已完成/ })).toHaveCount(1);
+    await expect(page.getByRole('button', { name: /write retry.txt 已完成/, includeHidden: true })).toHaveCount(1);
     expect(upstream.requests).toHaveLength(2);
   } finally { effect.close(); }
 });
@@ -203,7 +204,7 @@ test('确认重试自身再次中断会生成新的待确认代次，旧确认�
     expect(await readFile(join(conversation.defaultDirectory, 'twice.txt'))).toEqual(preserved);
     expect(upstream.requests).toHaveLength(1);
     await page.getByRole('button', { name: '停止本轮', exact: true }).click();
-    await expect(page.getByRole('button', { name: /write twice.txt 已停止/ })).toHaveCount(1);
+    await expect(page.getByRole('button', { name: /write twice.txt 已停止/, includeHidden: true })).toHaveCount(1);
     expect((await page.request.post(originalConfirmation.url(), { data: { attempt: 1 } })).status()).toBe(409);
     expect(await readFile(join(conversation.defaultDirectory, 'twice.txt'))).toEqual(preserved);
     expect(upstream.requests).toHaveLength(1);
@@ -234,11 +235,11 @@ test('默认目录移走后拒绝旧写入确认和新文件工具，不重建�
     await expect(stat(conversation.defaultDirectory)).rejects.toThrow();
     expect(upstream.requests).toHaveLength(1);
     await page.getByRole('button', { name: '停止本轮', exact: true }).click();
-    await expect(page.getByRole('button', { name: /write moved.txt 已停止/ })).toHaveCount(1);
+    await expect(page.getByRole('button', { name: /write moved.txt 已停止/, includeHidden: true })).toHaveCount(1);
     await page.getByRole('textbox', { name: '输入消息' }).fill('失效目录不能创建文件');
     await page.getByRole('button', { name: '发送消息' }).click();
     await expect(page.getByRole('alert')).toContainText('工作目录不可用');
-    await expect(page.getByRole('button', { name: /write unexpected.txt/ })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: /write unexpected.txt/, includeHidden: true })).toHaveCount(0);
     await expect(stat(conversation.defaultDirectory)).rejects.toThrow();
     expect(await readFile(join(moved, 'moved.txt'))).toEqual(original);
     expect(upstream.requests).toHaveLength(1);

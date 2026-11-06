@@ -19,6 +19,7 @@ test('普通会话各有默认目录，刷新和重启保留目录及独立文�
   await page.getByRole('button', { name: '发送消息' }).click();
   await expect(page.getByTestId('assistant-message')).toHaveText('甲的历史回复');
   await page.getByRole('button', { name: '新建会话', exact: true }).click();
+  await expect(page.getByRole('button', { name: '打开工作目录', exact: true })).not.toHaveAttribute('title', first.defaultDirectory);
   const second = (await (await page.request.get(`${workbench.url}/api/conversations`)).json())[0];
   expect(second.defaultDirectory).not.toBe(first.defaultDirectory);
   await expect(page.getByRole('button', { name: '打开工作目录', exact: true })).toHaveAttribute('title', second.defaultDirectory);

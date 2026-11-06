@@ -3,6 +3,7 @@ import { Check, ChevronRight, Copy, Lightbulb } from 'lucide-react';
 import Markdown from 'react-markdown';
 import type { ChatMessage, ThinkingTiming } from './types';
 import styles from './MessageContent.module.css';
+import { ToolCall } from './ToolCall';
 
 function CopyButton({ label, text }: { label: string; text: () => string }) {
   const [copied, setCopied] = useState(false);
@@ -52,6 +53,7 @@ export function MessageContent({ message, streaming, showFailureDetail = true }:
   <div data-testid={message.role === 'assistant' ? 'assistant-message' : 'user-message'}>
     {message.content.map((block, index) => block.type === 'thinking'
       ? <ThinkingBlock key={index} text={block.thinking} timing={block.timing} active={streaming && index === message.content.length - 1} />
+      : block.type === 'tool' ? <ToolCall key={block.tool.id} tool={block.tool} />
       : message.role === 'assistant' ? <div key={index} className={styles.markdown}><Markdown components={{ pre: CodeBlock }}>{block.text}</Markdown></div> : <div key={index}>{block.text}</div>)}
   </div>
   <div className={styles.footer}><time>{new Date(message.timestamp).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}</time>{message.termination && <span>{message.termination === 'stopped' ? '已停止' : '已中断'}</span>}{message.role === 'assistant' && body && <CopyButton label="复制正文" text={() => body} />}{message.stopReason === 'error' && <span className={styles.failure}>回复失败{showFailureDetail && `：${message.errorMessage || '模型未能完成回复'}`}</span>}</div>

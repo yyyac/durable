@@ -23,7 +23,8 @@ export function selectedModel(settings: ModelSettings | null) {
 }
 
 export type ThinkingTiming = { startedAt: number; endedAt?: number };
-export type ContentBlock = { type: 'text'; text: string } | { type: 'thinking'; thinking: string; timing?: ThinkingTiming };
+export type ToolCallState = { id: string; callId: string; name: string; arguments: Record<string, unknown>; status: 'pending' | 'running' | 'completed' | 'failed' | 'stopped'; output: string; cwd?: string };
+export type ContentBlock = { type: 'text'; text: string } | { type: 'thinking'; thinking: string; timing?: ThinkingTiming } | { type: 'tool'; tool: ToolCallState };
 export interface ChatMessage {
   id: string;
   role: 'user' | 'assistant';

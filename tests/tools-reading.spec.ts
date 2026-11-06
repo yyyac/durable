@@ -29,7 +29,7 @@ test('首次启用前纯聊天，确认后从独立目录读取真实文件并�
   await expect(tool).toHaveCount(1);
   await tool.click();
   await expect(page.getByTestId('tool-output')).toContainText('真实文件内容：春江潮水');
-  expect(upstream.requests[1].tools).toHaveLength(3);
+  expect(upstream.requests[1].tools?.map((item) => (item as { function: { name: string } }).function.name).sort()).toEqual(['edit', 'powershell', 'read', 'write']);
   expect(upstream.requests[2].messages.find((message) => message.role === 'tool')?.content).toContain('真实文件内容：春江潮水');
   await workbench.stop();
   await workbench.start();

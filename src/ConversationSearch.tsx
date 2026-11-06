@@ -31,7 +31,8 @@ export function ConversationSearch({ conversations, workspaces, onSelect }: { co
       <input className={styles.searchInput} aria-label="搜索会话" placeholder="搜索会话…" value={query} onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => { if (event.key === 'ArrowDown') { event.preventDefault(); resultsRef.current?.querySelector('button')?.focus(); } }} />
       <div className={styles.searchResults} ref={resultsRef}>{matches.length ? matches.map((conversation) => {
         const workspace = workspaces.find((item) => item.id === conversation.workspaceId);
-        return <button key={conversation.id} onKeyDown={move} onClick={() => { onSelect(conversation.id); setOpen(false); }}><span>{conversation.title}{workspace && <small className={styles.searchWorkspace} title={workspace.directory}>{workspace.name} · {workspace.directory}{workspace.archived && ' · 工作区已归档'}</small>}</span>{conversation.archived && <span className={styles.archived}> 已归档</span>}</button>;
+        const archived = [conversation.archived ? '已归档' : '', workspace?.archived ? '工作区已归档' : ''].filter(Boolean).join(' · ');
+        return <button key={conversation.id} onKeyDown={move} onClick={() => { onSelect(conversation.id); setOpen(false); }}><span>{conversation.title}{workspace && <small className={styles.searchWorkspace} title={workspace.directory}>{workspace.name} · {workspace.directory}</small>}</span>{archived && <span className={styles.archived}> {archived}</span>}</button>;
       }) : <p>没有找到匹配的会话</p>}</div>
       <footer className={styles.searchFooter}>↑ ↓ 选择 · Enter 打开 · Esc 关闭</footer>
       <Dialog.Close asChild><button className={styles.close} aria-label="关闭搜索"><X size={18} /></button></Dialog.Close>

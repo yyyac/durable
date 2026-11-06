@@ -6,13 +6,14 @@ import { crashAfterFileEffect } from './write-effect';
 import { DEFAULT_RESTART_LIMIT, DEFAULT_RETRY_POLICY } from '@earendil-works/pi-durable';
 
 test('归档工作区隐藏侧栏但保留搜索历史，当前及其他页面同步只读且后端拒绝新任务', async ({ page, context, workbench, upstream }, testInfo) => {
-  const directory = join(workbench.dataDir, '归档项目');
+  const directory = join(workbench.dataDir, `归档项目${'长目录'.repeat(25)}`);
   await mkdir(directory);
   await writeFile(join(directory, 'note.txt'), '归档前的真实文件');
   await page.goto(workbench.url);
   await configureModel(page, upstream.url);
   const created = await (await page.request.post(`${workbench.url}/api/workspaces`, { data: { path: directory, trusted: true } })).json();
   const session = created.conversation;
+  await page.request.patch(`${workbench.url}/api/workspaces/${session.workspaceId}`, { data: { name: '归档项目' } });
   await page.goto(`${workbench.url}/conversations/${session.id}`);
   upstream.enqueue({ chunks: [{ toolCall: { id: 'archive-read', name: 'read', arguments: '{"path":"note.txt"}' } }] });
   upstream.enqueue({ chunks: ['可回看的文件读取历史'] });
@@ -55,6 +56,7 @@ test('归档工作区隐藏侧栏但保留搜索历史，当前及其他页面�
   await page.getByRole('textbox', { name: '搜索会话', exact: true }).fill('归档前的问题');
   const result = page.getByRole('dialog', { name: '搜索会话' }).getByRole('button').filter({ hasText: '归档前的问题' });
   await expect(result).toContainText('工作区已归档');
+  await expect(result.getByText('工作区已归档', { exact: true })).toBeVisible();
   await expect(result).toContainText(directory);
   await page.screenshot({ path: testInfo.outputPath('workspace-archive-search.png') });
   await result.click();

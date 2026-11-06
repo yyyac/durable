@@ -40,6 +40,7 @@ export function canRetryReply(failure: ConversationState['failure']) {
 export type ContextUsage = { tokens: number; estimated: boolean; model?: { provider: string; modelId: string } };
 export interface ConversationState {
   id: string;
+  directory?: WorkingDirectory;
   messages: ChatMessage[];
   generation: ChatMessage | null;
   busy: boolean;
@@ -52,4 +53,7 @@ export type ConversationSummary = {
   title: string;
   createdAt: number;
   archived?: boolean;
+  defaultDirectory?: string;
 };
+
+export type WorkingDirectory = { path: string; available: boolean };

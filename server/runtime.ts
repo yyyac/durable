@@ -13,6 +13,7 @@ import { SettingsStore, type StoredSettings } from './settings.js';
 import { addConversation, listConversations } from './conversations.js';
 import { canRetryReply } from '../src/types.js';
 import { ThinkingClock, timingKey, type ThinkingTimings } from './thinking-timing.js';
+import { allocateDefaultDirectory, inspectDirectory } from './directories.js';
 
 export const context = BACKGROUND_CONTEXT;
 const STOP_ENTRY_KIND = 'workbench.stop';
@@ -91,13 +92,19 @@ export class Runtime {
     const harness = await Harness.open(storage, { models: () => modelsFor(settings.value), registry: createRegistry(), settings: { stream: { maxRetries: 0 }, compaction: { enabled: false } } }, context);
     const root = await harness.root(context, { agent: { tools: [], modelTools: [] } });
     await harness.commit((tx) => addConversation(tx, root.id), context);
+    for (const item of await listConversations(harness, true)) {
+      await harness.commit((tx) => allocateDefaultDirectory(tx, Number(item.id) as ConversationId, settings.directory), context);
+    }
     const thinking = new ThinkingClock(harness);
     for (const item of await listConversations(harness, true)) await thinking.observe(Number(item.id) as ConversationId);
     harness.resume();
     return new Runtime(harness, root, settings, thinking);
   }
   async createConversation() {
-    const conversation = await this.harness.createConversation({ ownership: { kind: 'ownerless' }, agent: { tools: [], modelTools: [] }, init: addConversation }, context);
+    const conversation = await this.harness.createConversation({ ownership: { kind: 'ownerless' }, agent: { tools: [], modelTools: [] }, init: async (tx, id) => {
+      await addConversation(tx, id);
+      await allocateDefaultDirectory(tx, id, this.settings.directory);
+    } }, context);
     await this.thinking.observe(conversation.id);
     return conversation;
   }
@@ -107,6 +114,16 @@ export class Runtime {
     const conversation = await this.harness.conversation(numericId as ConversationId, context);
     if (!conversation) throw new Error('会话不存在');
     return conversation;
+  }
+  async directory(conversation: Conversation) {
+    const item = (await listConversations(this.harness, true)).find((item) => item.id === String(conversation.id));
+    if (!item?.defaultDirectory) throw new Error('会话没有工作目录');
+    return inspectDirectory(item.defaultDirectory);
+  }
+  async requireDirectory(conversation: Conversation) {
+    const directory = await this.directory(conversation);
+    if (!directory.available) throw new Error('工作目录不可用，原目录可能已移动或删除；历史记录仍然保留');
+    return directory.path;
   }
   private async configure(tx: Tx, conversation: Conversation, selection?: ModelSelection) {
     const { service, model } = this.settings.model(selection);

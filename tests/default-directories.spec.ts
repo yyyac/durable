@@ -1,0 +1,97 @@
+import { stat, writeFile, readFile, rename, mkdir, copyFile } from 'node:fs/promises';
+import { isAbsolute, relative, join } from 'node:path';
+import { test, expect, Workbench } from './fixtures';
+import { configureModel } from './configure-model';
+import { seedLegacyWorkbench } from './legacy-workbench';
+
+test('普通会话各有默认目录，刷新和重启保留目录及独立文件', async ({ page, workbench, upstream }) => {
+  await page.goto(workbench.url);
+  await configureModel(page, upstream.url);
+  const first = (await (await page.request.get(`${workbench.url}/api/conversations`)).json())[0];
+  expect(typeof first.defaultDirectory).toBe('string');
+  expect(isAbsolute(first.defaultDirectory)).toBe(true);
+  expect(relative(workbench.dataDir, first.defaultDirectory)).not.toMatch(/^\.\./);
+  expect((await stat(first.defaultDirectory)).isDirectory()).toBe(true);
+  await expect(page.getByRole('button', { name: '打开工作目录', exact: true })).toHaveAttribute('title', first.defaultDirectory);
+  await writeFile(`${first.defaultDirectory}/note.txt`, '甲的文件');
+  upstream.enqueue({ chunks: ['甲的历史回复'] });
+  await page.getByRole('textbox', { name: '输入消息' }).fill('甲的问题');
+  await page.getByRole('button', { name: '发送消息' }).click();
+  await expect(page.getByTestId('assistant-message')).toHaveText('甲的历史回复');
+  await page.getByRole('button', { name: '新建会话', exact: true }).click();
+  const second = (await (await page.request.get(`${workbench.url}/api/conversations`)).json())[0];
+  expect(second.defaultDirectory).not.toBe(first.defaultDirectory);
+  await expect(page.getByRole('button', { name: '打开工作目录', exact: true })).toHaveAttribute('title', second.defaultDirectory);
+  await writeFile(`${second.defaultDirectory}/note.txt`, '乙的文件');
+  await page.reload();
+  await expect(page.getByRole('button', { name: '打开工作目录', exact: true })).toHaveAttribute('title', second.defaultDirectory);
+  await workbench.stop();
+  await workbench.start();
+  await page.reload();
+  await expect(page.getByRole('button', { name: '打开工作目录', exact: true })).toHaveAttribute('title', second.defaultDirectory);
+  await page.getByRole('button', { name: '甲的问题', exact: true }).click();
+  await expect(page.getByRole('button', { name: '打开工作目录', exact: true })).toHaveAttribute('title', first.defaultDirectory);
+  await expect(page.getByTestId('assistant-message')).toHaveText('甲的历史回复');
+  expect(await readFile(`${first.defaultDirectory}/note.txt`, 'utf8')).toBe('甲的文件');
+  expect(await readFile(`${second.defaultDirectory}/note.txt`, 'utf8')).toBe('乙的文件');
+  expect(upstream.requests).toHaveLength(1);
+});
+
+test('旧版会话迁移保留消息、归档和模型设置，重复启动保持原目录且不重跑回答', async ({ page, workbench, upstream }) => {
+  await page.goto(workbench.url);
+  await configureModel(page, upstream.url);
+  await workbench.stop();
+  const directory = join(workbench.dataDir, 'legacy');
+  await mkdir(directory);
+  await copyFile(join(workbench.dataDir, 'models.json'), join(directory, 'models.json'));
+  await seedLegacyWorkbench(directory);
+  const legacy = new Workbench(directory, workbench.port);
+  await legacy.start();
+  try {
+    await page.goto(workbench.url);
+    await expect(page.getByTestId('assistant-message')).toHaveText('旧版已经完成的回答');
+    await expect(page.getByTestId('user-message')).toHaveText('旧版问题');
+    await expect(page.getByRole('button', { name: '选择模型', exact: true })).toContainText('本地测试模型');
+    const migrated = await (await page.request.get(`${workbench.url}/api/conversations?includeArchived=true`)).json();
+    expect(migrated).toHaveLength(2);
+    expect(new Set(migrated.map((item: { defaultDirectory: string }) => item.defaultDirectory)).size).toBe(2);
+    for (const item of migrated) expect((await stat(item.defaultDirectory)).isDirectory()).toBe(true);
+    await page.getByRole('button', { name: '搜索', exact: true }).click();
+    await page.getByRole('textbox', { name: '搜索会话', exact: true }).fill('旧版归档');
+    await page.getByRole('button', { name: '旧版归档 已归档' }).click();
+    await expect(page.getByRole('button', { name: '打开工作目录', exact: true })).toHaveAttribute('title', migrated.find((item: { title: string }) => item.title === '旧版归档').defaultDirectory);
+    await legacy.stop();
+    await legacy.start();
+    await page.reload();
+    const restarted = await (await page.request.get(`${workbench.url}/api/conversations?includeArchived=true`)).json();
+    expect(restarted).toEqual(migrated);
+    expect(upstream.requests).toHaveLength(0);
+  } finally { await legacy.stop(); await workbench.start(); }
+});
+
+test('默认目录丢失保留历史且明确拒绝打开，刷新重启不会重建旧目录', async ({ page, workbench, upstream }) => {
+  await page.goto(workbench.url);
+  await configureModel(page, upstream.url);
+  upstream.enqueue({ chunks: ['目录丢失后仍保留的回复'] });
+  await page.getByRole('textbox', { name: '输入消息' }).fill('已有历史');
+  await page.getByRole('button', { name: '发送消息' }).click();
+  await expect(page.getByTestId('assistant-message')).toHaveText('目录丢失后仍保留的回复');
+  const conversation = (await (await page.request.get(`${workbench.url}/api/conversations`)).json())[0];
+  await rename(conversation.defaultDirectory, `${conversation.defaultDirectory}-moved`);
+  await page.reload();
+  await expect(page.getByText('工作目录不可用', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: '打开工作目录', exact: true }).click();
+  await expect(page.getByRole('alert')).toContainText('工作目录不可用');
+  const opened = await page.request.post(`${workbench.url}/api/conversations/${conversation.id}/directory/open`);
+  expect(opened.status()).toBe(400);
+  expect((await opened.json()).error).toContain('目录不可用');
+  await workbench.stop();
+  await workbench.start();
+  await page.reload();
+  await expect(page.getByTestId('assistant-message')).toHaveText('目录丢失后仍保留的回复');
+  await expect(page.getByText('工作目录不可用', { exact: true })).toBeVisible();
+  await expect(stat(conversation.defaultDirectory)).rejects.toThrow();
+  const current = (await (await page.request.get(`${workbench.url}/api/conversations`)).json())[0];
+  expect(current.defaultDirectory).toBe(conversation.defaultDirectory);
+  expect(upstream.requests).toHaveLength(1);
+});

@@ -19,11 +19,14 @@ test('归档工作区隐藏侧栏但保留搜索历史，当前及其他页面�
   await page.getByRole('textbox', { name: '输入消息' }).fill('归档前的问题');
   await page.getByRole('button', { name: '发送消息', exact: true }).click();
   await expect(page.getByTestId('assistant-message').last()).toHaveText('可回看的文件读取历史');
+  await expect(page.getByRole('button', { name: '发送消息', exact: true })).toBeEnabled();
   const observer = await context.newPage();
   await observer.goto(page.url());
   await expect(observer.getByTestId('assistant-message').last()).toHaveText('可回看的文件读取历史');
   await page.getByRole('button', { name: '归档项目的工作区菜单', exact: true }).click();
+  const archived = page.waitForResponse((response) => response.url().endsWith(`/api/workspaces/${session.workspaceId}`) && response.request().method() === 'PATCH');
   await page.getByRole('menuitem', { name: '归档工作区', exact: true }).click();
+  expect((await archived).ok()).toBe(true);
   for (const view of [page, observer]) {
     await expect(view.getByRole('region', { name: '归档项目工作区', exact: true })).toHaveCount(0);
     await expect(view.getByText('工作区已归档，仅可查看历史。', { exact: true })).toBeVisible();

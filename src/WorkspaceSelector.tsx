@@ -15,17 +15,31 @@ export function WorkspaceSelector({ workspaces, workspaceId, defaultDirectory, d
   const [path, setPath] = useState('');
   const [trusted, setTrusted] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [choosing, setChoosing] = useState(false);
   const [error, setError] = useState('');
   const workspace = workspaces.find((item) => item.id === workspaceId);
+  async function selectFolder() {
+    if (choosing) return;
+    setChoosing(true); setError('');
+    try {
+      const response = await fetch('/api/directories/select', { method: 'POST' });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error);
+      if (result.path !== null) { setPath(result.path); setTrusted(false); setAdding(true); }
+    } catch (error) {
+      setPath(''); setTrusted(false); setError((error as Error).message); setAdding(true);
+    } finally { setChoosing(false); }
+  }
   return <Dialog.Root open={adding} onOpenChange={setAdding}>
     <div className={styles.selector}><Menu.Root>
-      <Menu.Trigger aria-label="选择工作目录" disabled={disabled} className={styles.chip} title={workspace?.directory ?? defaultDirectory}><Folder size={14} /><span>{workspace?.name ?? '默认工作目录'}</span><ChevronDown size={12} /></Menu.Trigger>
+      <Menu.Trigger aria-label="选择工作目录" disabled={disabled || choosing} className={styles.chip} title={workspace?.directory ?? defaultDirectory}><Folder size={14} /><span>{choosing ? '正在选择文件夹…' : workspace?.name ?? '默认工作目录'}</span><ChevronDown size={12} /></Menu.Trigger>
       <Menu.Portal><Menu.Content className={styles.panel} align="start" sideOffset={4}>
         <Menu.Label className={styles.caption}>工作目录</Menu.Label>
         {[{ id: undefined, name: '默认工作目录', directory: defaultDirectory ?? '为每个普通会话提供独立目录' }, ...workspaces].map((item) => <Menu.Item key={item.id ?? 'default'} className={styles.option} data-selected={item.id === workspaceId} title={item.directory} onSelect={() => { if (item.id !== workspaceId) void onChoose(item.id).catch(() => {}); }}>
           <Folder size={15} /><span className={styles.info}><span className={styles.name}>{item.name}</span><span className={styles.path}>{item.directory}</span></span>{item.id === workspaceId && <Check size={14} />}
         </Menu.Item>)}
         <Menu.Separator className={styles.divider} />
+        <Menu.Item className={styles.action} onSelect={() => { void selectFolder(); }}><FolderPlus size={16} />选择文件夹…</Menu.Item>
         <Menu.Item className={styles.action} onSelect={() => { setPath(''); setTrusted(false); setError(''); setAdding(true); }}><FolderPlus size={16} />填写文件夹路径…</Menu.Item>
       </Menu.Content></Menu.Portal>
     </Menu.Root></div>

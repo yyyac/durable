@@ -8,6 +8,7 @@ import { ConversationBusy } from '@earendil-works/pi-durable';
 import { streamSSE } from 'hono/streaming';
 import { listConversations, titleConversation, renameConversation, archiveConversation } from './conversations.js';
 import { openLocalDirectory } from './directories.js';
+import { WorkspacesDoc, renameWorkspace } from './workspaces.js';
 
 const app = new Hono();
 const settings = new SettingsStore(resolve(process.env.WORKBENCH_DATA_DIR ?? '.data'));
@@ -31,13 +32,36 @@ app.put('/api/settings/selection', async (c) => {
 app.get('/api/conversation', (c) => c.json({ id: String(runtime.root.id) }));
 app.get('/api/conversations', async (c) => c.json(await listConversations(runtime.harness, c.req.query('includeArchived') === 'true')));
 app.post('/api/conversations', async (c) => {
-  const conversation = await runtime.createConversation();
-  const summaries = await listConversations(runtime.harness);
-  return c.json(summaries.find((item) => item.id === String(conversation.id))!, 201);
+  try {
+    const body = await c.req.text();
+    const input = body ? JSON.parse(body) : {};
+    if (input.workspaceId !== undefined && (typeof input.workspaceId !== 'string' || !input.workspaceId)) throw new Error('工作区无效');
+    const conversation = await runtime.createConversation({ workspaceId: input.workspaceId });
+    const summaries = await listConversations(runtime.harness);
+    return c.json(summaries.find((item) => item.id === String(conversation.id))!, 201);
+  } catch (error) { return c.json({ error: (error as Error).message }, 400); }
+});
+app.get('/api/workspaces', async (c) => c.json((await runtime.harness.snapshot(WorkspacesDoc, context))?.items ?? []));
+app.post('/api/workspaces', async (c) => {
+  try {
+    const input = await c.req.json();
+    if (input.path === undefined) throw new Error('请输入文件夹绝对路径');
+    const conversation = await runtime.createConversation({ path: input.path, trusted: input.trusted });
+    const item = (await listConversations(runtime.harness)).find((item) => item.id === String(conversation.id))!;
+    return c.json({ conversation: item }, 201);
+  } catch (error) { return c.json({ error: (error as Error).message }, 400); }
+});
+app.patch('/api/workspaces/:id', async (c) => {
+  try {
+    const input = await c.req.json();
+    await runtime.harness.commit((tx) => renameWorkspace(tx, c.req.param('id'), input.name), context);
+    return c.json({ ok: true });
+  } catch (error) { return c.json({ error: (error as Error).message }, 400); }
 });
 app.patch('/api/conversations/:id', async (c) => {
   try {
     const input = await c.req.json();
+    if ('workspaceId' in input || 'defaultDirectory' in input) throw new Error('会话创建后不能改变工作区归属；请选择目录创建新会话');
     const conversation = await runtime.conversation(c.req.param('id'));
     if (typeof input.title === 'string') await renameConversation(runtime.harness, conversation.id, input.title);
     else if (input.archived === true) await archiveConversation(runtime.harness, conversation.id);

@@ -3,15 +3,21 @@ import { join } from 'node:path';
 import { spawn } from 'node:child_process';
 import type { ConversationId, Tx } from '@earendil-works/pi-durable';
 import { ConversationsDoc } from './conversations.js';
-import type { WorkingDirectory } from '../src/types.js';
+import type { WorkingDirectory, ConversationSummary, Workspace } from '../src/types.js';
 
 export async function allocateDefaultDirectory(tx: Tx, id: ConversationId, dataDirectory: string) {
   const index = await tx.doc(ConversationsDoc);
   const item = index.items.find((conversation) => conversation.id === String(id));
-  if (!item || item.defaultDirectory) return;
+  if (!item || item.workspaceId || item.defaultDirectory) return;
   const path = join(dataDirectory, 'sessions', String(id));
   await mkdir(path, { recursive: true });
   item.defaultDirectory = path;
+}
+
+export function conversationDirectory(item: ConversationSummary | undefined, workspaces: readonly Workspace[]) {
+  const path = item?.workspaceId ? workspaces.find((workspace) => workspace.id === item.workspaceId)?.directory : item?.defaultDirectory;
+  if (!path) throw new Error('会话没有工作目录');
+  return path;
 }
 
 export async function inspectDirectory(path: string): Promise<WorkingDirectory> {

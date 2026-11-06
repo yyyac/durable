@@ -55,6 +55,9 @@ export type ConversationSummary = {
   createdAt: number;
   archived?: boolean;
   defaultDirectory?: string;
+  workspaceId?: string;
 };
+
+export type Workspace = { id: string; name: string; directory: string; createdAt: number };
 
 export type WorkingDirectory = { path: string; available: boolean };

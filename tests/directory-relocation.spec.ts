@@ -19,7 +19,7 @@ async function previewRelocation(page: Page, path: string) {
   return dialog;
 }
 
-test('普通默认目录显式重新定位保留会话历史与草稿，真实读取写入和命令改用新目录', async ({ page, workbench, upstream }) => {
+test('普通默认目录显式重新定位保留会话历史与草稿，本机工具改用新目录', async ({ page, workbench, upstream }, testInfo) => {
   await page.goto(workbench.url);
   await configureModel(page, upstream.url);
   await enableTools(page);
@@ -41,7 +41,7 @@ test('普通默认目录显式重新定位保留会话历史与草稿，真实�
   const dialog = await previewRelocation(page, target);
   await expect(dialog).toContainText(session.defaultDirectory);
   await expect(dialog).toContainText(target);
-  await page.screenshot({ path: 'E:/Agent/durable/.tmp-reference-inspection/spec11/qa21-confirm-paths.png' });
+  await page.screenshot({ path: testInfo.outputPath('qa21-confirm-paths.png') });
   await dialog.getByRole('button', { name: '确认重新定位', exact: true }).click();
   await expect(dialog).not.toBeVisible();
   expect(page.url()).toBe(originalUrl);
@@ -52,22 +52,23 @@ test('普通默认目录显式重新定位保留会话历史与草稿，真实�
   expect(JSON.parse(await page.getByLabel('工具参数').first().innerText())).toEqual({ path: originalPath });
   upstream.enqueue({ chunks: [{ toolCall: { id: 'relocated-read', name: 'read', arguments: '{"path":"original.txt"}' } }] });
   upstream.enqueue({ chunks: [{ toolCall: { id: 'relocated-write', name: 'write', arguments: '{"path":"created.txt","content":"新目录创建内容"}' } }] });
-  upstream.enqueue({ chunks: [{ toolCall: { id: 'relocated-command', name: 'powershell', arguments: JSON.stringify({ command: '[Console]::Write((Get-Location).Path)' }) } }] });
+  const runsCommand = process.platform === 'win32';
+  if (runsCommand) upstream.enqueue({ chunks: [{ toolCall: { id: 'relocated-command', name: 'powershell', arguments: JSON.stringify({ command: '[Console]::Write((Get-Location).Path)' }) } }] });
   upstream.enqueue({ chunks: ['在新目录完成'] });
   await page.getByRole('textbox', { name: '输入消息' }).fill('在新目录读写并检查命令位置');
   await page.getByRole('button', { name: '发送消息', exact: true }).click();
   await expect(page.getByTestId('assistant-message').last()).toHaveText('在新目录完成', { timeout: 15_000 });
   expect(await readFile(join(target, 'created.txt'), 'utf8')).toBe('新目录创建内容');
-  expect(JSON.stringify(upstream.requests.at(-1)?.messages)).toContain(target.replaceAll('\\', '\\\\'));
+  if (runsCommand) expect(JSON.stringify(upstream.requests.at(-1)?.messages)).toContain(target.replaceAll('\\', '\\\\'));
   const relocated = (await (await page.request.get(`${workbench.url}/api/conversations`)).json())[0];
   expect(relocated).toMatchObject({ id: session.id, defaultDirectory: target });
   expect(relocated.workspaceId).toBeUndefined();
   await workbench.stop(); await workbench.start(); await page.reload();
   await expect(page.getByRole('button', { name: '打开工作目录', exact: true })).toHaveAttribute('title', target);
   await expect(page.getByTestId('assistant-message').last()).toHaveText('在新目录完成');
-  await page.screenshot({ path: 'E:/Agent/durable/.tmp-reference-inspection/spec11/qa21-relocated.png' });
+  await page.screenshot({ path: testInfo.outputPath('qa21-relocated.png') });
   await expect(stat(session.defaultDirectory)).rejects.toThrow();
-  expect(upstream.requests).toHaveLength(6);
+  expect(upstream.requests).toHaveLength(runsCommand ? 6 : 5);
 });
 
 test('工作区重新定位校验无效和实际目录占用，取消不改关联且全部会话保持身份', async ({ page, workbench, upstream }) => {
@@ -125,6 +126,7 @@ test('工作区重新定位校验无效和实际目录占用，取消不改关�
 });
 
 test('工作区另一会话运行命令时拒绝重新定位，真正停止后才允许提交', async ({ page, workbench, upstream }) => {
+  test.skip(process.platform !== 'win32', '需要在真实 Windows 命令运行期间验证重新定位');
   await page.goto(workbench.url); await configureModel(page, upstream.url);
   const directory = join(workbench.dataDir, '命令运行目录');
   const target = join(workbench.dataDir, '命令新目录');

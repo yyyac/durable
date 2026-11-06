@@ -31,7 +31,7 @@ test('会话重命名针对菜单所选记录并持久化，当前标题同步�
   expect(upstream.requests).toHaveLength(2);
 });
 
-test('搜索打开归档会话，菜单操作不串改其它会话且刷新后仍可读取历史', async ({ page, workbench, upstream }) => {
+test('搜索打开归档会话，菜单操作不串改其它会话且刷新后仍可读取历史', async ({ page, workbench, upstream }, testInfo) => {
   await page.goto(workbench.url);
   await openModelSettings(page);
   await page.getByLabel('接口地址').fill(upstream.url);
@@ -61,7 +61,7 @@ test('搜索打开归档会话，菜单操作不串改其它会话且刷新后�
   await page.reload();
   await page.keyboard.press('Control+k');
   await page.getByRole('textbox', { name: '搜索会话' }).fill('甲');
-  await page.screenshot({ path: 'C:/Users/yyya/.codex/visualizations/2026/11/05/01a1aa98-cbf6-74a3-b305-5cdf00994c45/conversation-search.png' });
+  await page.screenshot({ path: testInfo.outputPath('conversation-search.png') });
   await search.getByRole('button', { name: '甲的项目 已归档', exact: true }).click();
   await expect(page.getByRole('heading', { name: '会话标题' })).toHaveText('甲的项目');
   await expect(page.getByTestId('assistant-message')).toHaveText('甲的项目的历史');
@@ -70,7 +70,7 @@ test('搜索打开归档会话，菜单操作不串改其它会话且刷新后�
   await expect(page.getByTestId('assistant-message')).toHaveText('甲的项目的历史');
   await page.getByRole('button', { name: '乙的计划', exact: true }).click();
   await page.getByRole('button', { name: '乙的计划的会话菜单', exact: true }).click();
-  await page.screenshot({ path: 'C:/Users/yyya/.codex/visualizations/2026/11/05/01a1aa98-cbf6-74a3-b305-5cdf00994c45/conversation-menu.png' });
+  await page.screenshot({ path: testInfo.outputPath('conversation-menu.png') });
   await page.keyboard.press('Escape');
   await expect(page.getByRole('button', { name: '乙的计划的会话菜单', exact: true })).toBeFocused();
   expect(upstream.requests).toHaveLength(2);

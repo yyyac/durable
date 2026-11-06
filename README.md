@@ -55,4 +55,6 @@ npm test
 
 浏览器测试自动启动隔离的真实后端、pi-durable 和临时 SQLite，只将外部模型服务替换为可暂停的本机流式服务。测试使用独立端口和临时数据目录，不读取个人配置。已有 Chromium 时可通过 `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH` 指定可执行文件。
 
+GitHub Actions 在每个 PR 和推送到 `master` 时使用 Ubuntu、Node.js 24 构建并运行 `npm test`。真实 Windows PowerShell、进程树清理和 Windows 文件系统专属用例只在 Windows 上执行。修改这些功能后或发布前，请在 Windows 本机运行上述检查；原生文件夹弹窗按 [Windows 目录交互检查](docs/verification/windows-directory-picker.md) 手动验证。
+
 规格、票据与领域约定见 [首版规格](docs/specs/personal-agent-workbench-v1.md)、[GitHub Issues](https://github.com/yyyac/durable/issues/1)、[领域语言](GLOSSARY.md) 和 [架构决定](docs/adr/0001-separate-agent-lifecycle-from-web-subscriptions.md)。

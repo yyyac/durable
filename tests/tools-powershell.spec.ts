@@ -5,6 +5,8 @@ import { test, expect } from './fixtures';
 import { configureModel } from './configure-model';
 import { crashAfterFileEffect } from './write-effect';
 
+test.skip(process.platform !== 'win32', '需要真实 Windows PowerShell 和进程树');
+
 const quote = (value: string) => `'${value.replaceAll("'", "''")}'`;
 
 async function commandTree(directory: string) {

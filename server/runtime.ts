@@ -16,6 +16,7 @@ import { ThinkingClock, timingKey, type ThinkingTimings } from './thinking-timin
 import { allocateDefaultDirectory, inspectDirectory, conversationDirectory } from './directories.js';
 import { WorkspacesDoc, bindWorkspace, requireWorkspace } from './workspaces.js';
 import { LocalToolsDoc, localEnvironment, localToolsEnabled, readTool } from './local-tools.js';
+import { CAPACITY_ENTRY_KIND, limitRecoveredRuns, RECOVERY_CAPACITY_MESSAGE, requireRunCapacity, stoppedForCapacity } from './run-admission.js';
 
 export const context = BACKGROUND_CONTEXT;
 const STOP_ENTRY_KIND = 'workbench.stop';
@@ -64,7 +65,7 @@ function displayMessage(id: string, message: Message, taskId: number | undefined
 }
 
 export function stateFrom(view: ConversationView, entries: readonly EntryRecord[], modelContext: readonly Message[], timings: ThinkingTimings = { blocks: {} }): ConversationState {
-  const live = view.docs['pi.live'] as { run?: { taskId: number }; generation?: { message?: Message }; tools?: Array<{ callId: string; name: string; status: 'pending' | 'running' | 'done'; output?: string; details?: { cwd?: string } }>; runFailure?: { reason: string; detail?: string } } | undefined;
+  const live = view.docs['pi.live'] as { run?: { taskId: number }; generation?: { message?: Message }; tools?: Array<{ callId: string; name: string; status: 'pending' | 'running' | 'done'; output?: string; details?: { cwd?: string } }>; runFailure?: { taskId: number; reason: string; detail?: string } } | undefined;
   const tools = new Map<string, ToolCallState>();
   const latestCalls = new Map<string, string>();
   // 工具结果归属于其前一个调用轮次，模型在后续轮次可以复用同一调用编号。
@@ -93,6 +94,7 @@ export function stateFrom(view: ConversationView, entries: readonly EntryRecord[
   const partial = live?.generation?.message;
   const partialTokens = partial && !modelContext.some((message) => message.role === 'assistant' && message.timestamp === partial.timestamp) ? estimateMessageTokens(partial) : 0;
   const stopped = entries.filter((entry) => entry.kind === STOP_ENTRY_KIND).map((entry) => entry.data as StoppedAttempt);
+  const capacityStopped = entries.some((entry) => entry.kind === CAPACITY_ENTRY_KIND && (entry.data as { taskId: number }).taskId === live?.runFailure?.taskId);
   const messages = entries.flatMap((entry) => (entry.model ?? []).flatMap((message, index) => {
     const projected = displayMessage(`${entry.id}:${index}`, message, entry.byTaskId, timings, tools);
     if (projected?.stopReason === 'aborted') {
@@ -110,7 +112,7 @@ export function stateFrom(view: ConversationView, entries: readonly EntryRecord[
       estimated: usage.trailingTokens > 0 || partialTokens > 0,
       model: usageMessage?.role === 'assistant' ? { provider: usageMessage.provider, modelId: usageMessage.model } : undefined,
     },
-    failure: live?.runFailure ? { ...live.runFailure, detail: readableFailure(live.runFailure.detail) } : undefined,
+    failure: live?.runFailure ? capacityStopped ? { reason: 'interrupted', detail: RECOVERY_CAPACITY_MESSAGE } : { ...live.runFailure, detail: readableFailure(live.runFailure.detail) } : undefined,
   };
 }
 
@@ -128,6 +130,7 @@ export class Runtime {
     }
     const thinking = new ThinkingClock(harness);
     for (const item of await listConversations(harness, true)) await thinking.observe(Number(item.id) as ConversationId);
+    await limitRecoveredRuns(harness, context);
     harness.resume();
     return new Runtime(harness, root, settings, thinking);
   }
@@ -172,6 +175,7 @@ export class Runtime {
     const id = await conversation.commit(async (tx) => {
       const live = await tx.doc(LiveDoc, conversation.id);
       if (live.run) throw new ConversationBusy(conversation.id);
+      await requireRunCapacity(tx);
       await this.configure(tx, conversation, selection);
       return conversation.submit(tx, { type: 'input', content, whenBusy: 'reject' });
     }, context);
@@ -181,7 +185,9 @@ export class Runtime {
   async retry(conversation: Conversation, selection?: ModelSelection) {
     const id = await conversation.commit(async (tx) => {
       const live = await tx.doc(LiveDoc, conversation.id);
-      if (live.run || !canRetryReply(live.runFailure)) return null;
+      if (live.run) return null;
+      if (!canRetryReply(live.runFailure) && !await stoppedForCapacity(tx, conversation.id, live.runFailure?.taskId)) return null;
+      await requireRunCapacity(tx);
       await this.configure(tx, conversation, selection);
       return conversation.submit(tx, { type: 'continue' });
     }, context);

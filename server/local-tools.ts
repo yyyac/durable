@@ -43,6 +43,7 @@ export const readTool = {
     if (!api.env) throw new Error('工作目录不可用，无法读取文件');
     const cwd = await api.memo('working-directory', api.env.cwd, context);
     if (cwd !== api.env.cwd) throw new Error('工作目录已变更，请重新发起读取');
+    if (!(await inspectDirectory(cwd)).available) throw new Error('工作目录不可用，无法读取文件');
     const snapshot = versionedReadEnvironment(api.env);
     let result;
     try { result = await read.execute(args, { ...api, env: snapshot.env }, context); }

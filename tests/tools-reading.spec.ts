@@ -95,7 +95,7 @@ test('取消启用后后端拒绝模型擅自读取，本机文件内容不会�
   await expect(page.getByRole('button', { name: '启用本机工具', exact: true })).toBeVisible();
 });
 
-test('不存在的文件和失效的工作目录显示真实失败，模型接收到失败而不是伪造内容', async ({ page, workbench, upstream }) => {
+test('不存在文件返回真实失败，工作目录失效在准入时拒绝且不伪造内容', async ({ page, workbench, upstream }) => {
   await page.goto(workbench.url);
   await configureModel(page, upstream.url);
   const conversation = (await (await page.request.get(`${workbench.url}/api/conversations`)).json())[0];
@@ -110,13 +110,12 @@ test('不存在的文件和失效的工作目录显示真实失败，模型接�
   await expect(page.getByTestId('tool-output')).toContainText('missing.txt');
   expect(JSON.stringify(upstream.requests[1].messages)).toContain('missing.txt');
   await rename(conversation.defaultDirectory, `${conversation.defaultDirectory}-moved`);
-  upstream.enqueue({ chunks: [{ toolCall: { id: 'invalid-directory-read', name: 'read', arguments: '{"path":"note.txt"}' } }] });
-  upstream.enqueue({ chunks: ['目录失效，无法读取'] });
   await page.getByRole('textbox', { name: '输入消息' }).fill('读取 note.txt');
   await page.getByRole('button', { name: '发送消息' }).click();
-  await expect(page.getByTestId('assistant-message').last()).toHaveText('目录失效，无法读取');
-  await expect(page.getByRole('button', { name: /read note.txt 失败/ })).toHaveCount(1);
-  expect(JSON.stringify(upstream.requests[3].messages)).toContain('工作目录不可用');
+  await expect(page.getByRole('alert')).toContainText('工作目录不可用');
+  await expect(page.getByRole('button', { name: /read note.txt/ })).toHaveCount(0);
+  expect(upstream.requests).toHaveLength(2);
+  await expect(stat(conversation.defaultDirectory)).rejects.toThrow();
 });
 
 test('真实文件读取已打开后进程崩溃自动重放读取，完成调用在再次重启后不重跑', async ({ page, workbench, upstream }) => {

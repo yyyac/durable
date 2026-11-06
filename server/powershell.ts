@@ -9,6 +9,7 @@ import { once } from 'node:events';
 import { randomUUID } from 'node:crypto';
 import type { ExecutionEnv } from '@earendil-works/pi-durable/env';
 import { recoverableTool } from './tool-recovery.js';
+import { inspectDirectory } from './directories.js';
 
 const powershell = createPowerShellTool();
 async function powerShellProgram() {
@@ -25,6 +26,7 @@ function monitoredEnvironment(env: ExecutionEnv): ExecutionEnv {
     if (key === 'exec') return (async (command, options, context) => {
       if (typeof command === 'string') throw new Error('命令必须通过 PowerShell 参数执行');
       context.abortSignal?.throwIfAborted();
+      if (!(await inspectDirectory(target.cwd)).available) throw new Error('工作目录不可用，无法启动命令');
       const pipe = `\\\\.\\pipe\\durable-command-${randomUUID()}`;
       let connection: Socket | undefined;
       const server = createServer((socket) => { connection = socket; socket.on('error', () => {}); });

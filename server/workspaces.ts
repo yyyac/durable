@@ -24,7 +24,7 @@ export const WorkspacesDoc = defineDoc({
   initial: (): { items: Workspace[] } => ({ items: [] }), checkpointWhen: () => true,
 });
 
-async function existingDirectory(path: unknown) {
+export async function existingDirectory(path: unknown) {
   if (typeof path !== 'string' || !path.trim() || !isAbsolute(path) || (process.platform === 'win32' && parse(path).root.length === 1)) throw new Error('请输入已经存在的文件夹绝对路径');
   try {
     const directory = await realpath(path);

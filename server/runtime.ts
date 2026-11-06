@@ -15,6 +15,7 @@ import { canRetryReply } from '../src/types.js';
 import { ThinkingClock, timingKey, type ThinkingTimings } from './thinking-timing.js';
 import { allocateDefaultDirectory, inspectDirectory, conversationDirectory } from './directories.js';
 import { WorkspacesDoc, bindWorkspace, requireWorkspace, requireConversationActive } from './workspaces.js';
+import { requireBoundDirectory } from './directory-relocation.js';
 import { LocalToolsDoc, localEnvironment, localToolsEnabled, readTool } from './local-tools.js';
 import { writeTool, editTool } from './file-writing.js';
 import { powershellTool } from './powershell.js';
@@ -169,7 +170,8 @@ export class Runtime {
   async directory(conversation: Conversation) {
     const item = (await listConversations(this.harness, true)).find((item) => item.id === String(conversation.id));
     const workspaces = await this.harness.snapshot(WorkspacesDoc, context);
-    return inspectDirectory(conversationDirectory(item, workspaces?.items ?? []));
+    const workspace = workspaces?.items.find((workspace) => workspace.id === item?.workspaceId);
+    return { ...await inspectDirectory(conversationDirectory(item, workspaces?.items ?? [])), version: (workspace ?? item)?.directoryVersion ?? 0 };
   }
   async requireDirectory(conversation: Conversation) {
     const directory = await this.directory(conversation);
@@ -182,6 +184,7 @@ export class Runtime {
   }
   private async configure(tx: Tx, conversation: Conversation, selection?: ModelSelection) {
     const { service, model } = this.settings.model(selection);
+    await requireBoundDirectory(tx, conversation.id);
     const item = (await tx.doc(ConversationsDoc)).items.find((item) => item.id === String(conversation.id));
     if (item?.workspaceId) await requireWorkspace(tx, item.workspaceId);
     const enabled = Boolean(item?.workspaceId) || (await tx.doc(LocalToolsDoc)).enabled;

@@ -235,15 +235,13 @@ test('默认目录移走后拒绝旧写入确认和新文件工具，不重建�
     expect(upstream.requests).toHaveLength(1);
     await page.getByRole('button', { name: '停止本轮', exact: true }).click();
     await expect(page.getByRole('button', { name: /write moved.txt 已停止/ })).toHaveCount(1);
-    upstream.enqueue({ chunks: [{ toolCall: { id: 'invalid-new-write', name: 'write', arguments: '{"path":"unexpected.txt","content":"不应创建"}' } }] });
-    upstream.enqueue({ chunks: ['目录失效，创建失败'] });
     await page.getByRole('textbox', { name: '输入消息' }).fill('失效目录不能创建文件');
     await page.getByRole('button', { name: '发送消息' }).click();
-    await expect(page.getByTestId('assistant-message').last()).toHaveText('目录失效，创建失败');
-    await expect(page.getByRole('button', { name: /write unexpected.txt 失败/ })).toHaveCount(1);
+    await expect(page.getByRole('alert')).toContainText('工作目录不可用');
+    await expect(page.getByRole('button', { name: /write unexpected.txt/ })).toHaveCount(0);
     await expect(stat(conversation.defaultDirectory)).rejects.toThrow();
     expect(await readFile(join(moved, 'moved.txt'))).toEqual(original);
-    expect(JSON.stringify(upstream.requests.at(-1)?.messages)).toContain('工作目录不可用');
+    expect(upstream.requests).toHaveLength(1);
   } finally { effect.close(); }
 });
 
@@ -264,6 +262,6 @@ test('同一工作区两个会话竞争创建同名真实文件时至多一个�
   await expect.poll(() => upstream.finishedResponses).toBe(4);
   const results = upstream.requests.slice(2).map((request) => JSON.stringify(request.messages.find((message) => message.role === 'tool')));
   expect(results.filter((result) => result.includes('Successfully wrote to race.txt'))).toHaveLength(1);
-  expect(results.filter((result) => result.includes('EEXIST'))).toHaveLength(1);
+  expect(results.filter((result) => /EEXIST|目标(?:文件|路径)已存在/.test(result)), results.join('\n')).toHaveLength(1);
   expect(['竞争者甲的完整内容', '竞争者乙的完整内容']).toContain(await readFile(join(directory, 'race.txt'), 'utf8'));
 });

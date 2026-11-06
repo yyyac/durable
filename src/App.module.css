@@ -34,6 +34,8 @@ button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 2px
 .mainEmpty .composerArea { margin: 0 auto; padding-top: 0; }
 .mainEmpty .directory { max-width: calc(100% - 32px); margin: 0 0 4px 16px; background: #f3f3f3; }
 .mainEmpty .directory:hover { background: #eaecee; }
+.directoryPicker { display: flex; align-items: center; min-width: 0; }
+.mainEmpty .directoryPicker .directory { flex: 1; max-width: 50%; margin: 0 0 4px 8px; background: transparent; }
 .mainEmpty .composer textarea { min-height: 62px; }
 .overlay { position: fixed; inset: 0; background: #0006; }
 .close { position: absolute; top: 18px; right: 18px; display: flex; padding: 5px; border-radius: 5px; }

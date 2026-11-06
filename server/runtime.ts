@@ -10,10 +10,11 @@ import { openNodeSqliteStorage } from '@earendil-works/pi-durable/storage/sqlite
 import { join } from 'node:path';
 import type { ChatMessage, ConversationState, ContentBlock, ModelSelection, ToolCallState } from '../src/types.js';
 import { SettingsStore, type StoredSettings } from './settings.js';
-import { addConversation, listConversations } from './conversations.js';
+import { addConversation, listConversations, ConversationsDoc } from './conversations.js';
 import { canRetryReply } from '../src/types.js';
 import { ThinkingClock, timingKey, type ThinkingTimings } from './thinking-timing.js';
-import { allocateDefaultDirectory, inspectDirectory } from './directories.js';
+import { allocateDefaultDirectory, inspectDirectory, conversationDirectory } from './directories.js';
+import { WorkspacesDoc, bindWorkspace, requireWorkspace } from './workspaces.js';
 import { LocalToolsDoc, localEnvironment, localToolsEnabled, readTool } from './local-tools.js';
 
 export const context = BACKGROUND_CONTEXT;
@@ -130,9 +131,10 @@ export class Runtime {
     harness.resume();
     return new Runtime(harness, root, settings, thinking);
   }
-  async createConversation() {
+  async createConversation(input: { workspaceId?: string; path?: unknown; trusted?: unknown } = {}) {
     const conversation = await this.harness.createConversation({ ownership: { kind: 'ownerless' }, agent: { tools: [], modelTools: [] }, init: async (tx, id) => {
-      await addConversation(tx, id);
+      const workspace = input.path !== undefined ? await bindWorkspace(tx, input.path, input.trusted) : input.workspaceId ? await requireWorkspace(tx, input.workspaceId) : undefined;
+      await addConversation(tx, id, workspace?.id);
       await allocateDefaultDirectory(tx, id, this.settings.directory);
     } }, context);
     await this.thinking.observe(conversation.id);
@@ -147,8 +149,8 @@ export class Runtime {
   }
   async directory(conversation: Conversation) {
     const item = (await listConversations(this.harness, true)).find((item) => item.id === String(conversation.id));
-    if (!item?.defaultDirectory) throw new Error('会话没有工作目录');
-    return inspectDirectory(item.defaultDirectory);
+    const workspaces = await this.harness.snapshot(WorkspacesDoc, context);
+    return inspectDirectory(conversationDirectory(item, workspaces?.items ?? []));
   }
   async requireDirectory(conversation: Conversation) {
     const directory = await this.directory(conversation);
@@ -161,7 +163,9 @@ export class Runtime {
   }
   private async configure(tx: Tx, conversation: Conversation, selection?: ModelSelection) {
     const { service, model } = this.settings.model(selection);
-    const enabled = (await tx.doc(LocalToolsDoc)).enabled;
+    const item = (await tx.doc(ConversationsDoc)).items.find((item) => item.id === String(conversation.id));
+    if (item?.workspaceId) await requireWorkspace(tx, item.workspaceId);
+    const enabled = Boolean(item?.workspaceId) || (await tx.doc(LocalToolsDoc)).enabled;
     await configure(tx, conversation.id, { model: { provider: service.id, modelId: model.modelId }, thinkingLevel: model.supportsThinking ? 'medium' : 'off', tools: enabled ? [readTool] : [], modelTools: enabled ? [readTool] : [] });
   }
   async send(conversation: Conversation, content: string, selection?: ModelSelection) {

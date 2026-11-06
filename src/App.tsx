@@ -1,15 +1,16 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import { ArrowUp, Square, FolderOpen } from 'lucide-react';
 import { SettingsDialog } from './SettingsDialog';
 import { ModelSelector } from './ModelSelector';
 import { MessageContent } from './MessageContent';
 import { LocalToolsNotice } from './LocalToolsNotice';
+import { WorkspaceSelector } from './WorkspaceSelector';
 import { useFollowingScroll } from './useFollowingScroll';
 import { Sidebar } from './Sidebar';
 import { BrandLogo } from './BrandLogo';
 import { useConversations } from './useConversations';
 import { useConversation } from './useConversation';
-import { canRetryReply, selectedModel, type ModelSettings } from './types';
+import { canRetryReply, selectedModel, type ModelSettings, type Workspace } from './types';
 import styles from './App.module.css';
 
 export function App() {
@@ -21,6 +22,14 @@ export function App() {
   const selected = selectedModel(settings);
   const { conversations, selectedId, select, create, creating, refresh, rename, archive, error: listError } = useConversations();
   const { state, connection } = useConversation(selectedId);
+  const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
+  const refreshWorkspaces = useCallback(async () => {
+    const response = await fetch('/api/workspaces');
+    if (!response.ok) throw new Error('无法读取工作区');
+    setWorkspaces(await response.json());
+  }, []);
+  useEffect(() => { void refreshWorkspaces().catch((error: Error) => setError(error.message)); }, [refreshWorkspaces]);
+  const current = conversations.find((item) => item.id === selectedId);
   const currentId = useRef(selectedId);
   currentId.current = selectedId;
   useEffect(() => { void fetch('/api/settings').then((response) => response.json()).then(setSettings); }, []);
@@ -83,7 +92,11 @@ export function App() {
   const directoryButton = state?.directory && <button type="button" aria-label="打开工作目录" title={state.directory.path} className={styles.directory} onClick={() => { void openDirectory(); }}><FolderOpen size={14} /><span>{state.directory.path}</span></button>;
   const { scrollRef, onScroll } = useFollowingScroll(state?.id, messages);
   return <div className={styles.workbench}>
-    <Sidebar conversations={conversations} selectedId={selectedId} onSelect={select} onCreate={() => { void create(); }} onRename={rename} onArchive={archive} creating={creating || !selectedId}>
+    <Sidebar conversations={conversations} workspaces={workspaces} selectedId={selectedId} onSelect={select} onCreate={() => { void create().catch(() => {}); }} onCreateWorkspace={(workspaceId) => { void create({ workspaceId }).catch(() => {}); }} onRenameWorkspace={async (id, name) => {
+      const response = await fetch(`/api/workspaces/${id}`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name }) });
+      if (!response.ok) throw new Error((await response.json()).error);
+      await refreshWorkspaces();
+    }} onRename={rename} onArchive={archive} creating={creating || !selectedId}>
       <SettingsDialog settings={settings} onSaved={setSettings} />
     </Sidebar>
     <main className={`${styles.main} ${empty ? styles.mainEmpty : ''}`}>
@@ -98,7 +111,7 @@ export function App() {
         </div>}
       </div>
       <div className={styles.composerArea}>
-        {empty && directoryButton}
+        {empty && <div className={styles.directoryPicker}><WorkspaceSelector workspaces={workspaces} workspaceId={current?.workspaceId} defaultDirectory={current?.defaultDirectory} disabled={creating || !state} onChoose={(workspaceId) => create({ workspaceId })} onAdd={async (path) => { await create({ path, trusted: true }); await refreshWorkspaces(); }} />{directoryButton}</div>}
         {state?.directory && !state.directory.available && <p role="status" className={styles.connection}><strong>工作目录不可用</strong>，原目录可能已移动或删除。历史记录仍然保留。</p>}
         {connection === 'reconnecting' && <p role="status" className={styles.connection}>连接已断开，正在重连…</p>}
         {state?.failure?.reason === 'aborted' && messages.at(-1)?.termination !== 'stopped' && <p role="status" className={styles.connection}>已停止</p>}
@@ -109,7 +122,7 @@ export function App() {
               if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); }
             }} />
           </div>
-          <div className={styles.composerActions}><span>{selected ? <LocalToolsNotice directory={state?.directory?.path} /> : '请先配置模型'}</span>{settings && selected && <ModelSelector settings={settings} contextUsage={state?.contextUsage ?? null} onSaved={setSettings} />}{state?.busy ? <button type="button" aria-label="停止生成" className={styles.send} disabled={stopping} onClick={() => { void stop(); }}><Square size={12} fill="currentColor" /></button> : <button type="submit" aria-label="发送消息" className={styles.send} disabled={!selected || !state || submitting || creating}><ArrowUp size={18} /></button>}</div>
+          <div className={styles.composerActions}><span>{selected ? !current?.workspaceId && <LocalToolsNotice key={selectedId} directory={state?.directory?.path} /> : '请先配置模型'}</span>{settings && selected && <ModelSelector settings={settings} contextUsage={state?.contextUsage ?? null} onSaved={setSettings} />}{state?.busy ? <button type="button" aria-label="停止生成" className={styles.send} disabled={stopping} onClick={() => { void stop(); }}><Square size={12} fill="currentColor" /></button> : <button type="submit" aria-label="发送消息" className={styles.send} disabled={!selected || !state || submitting || creating}><ArrowUp size={18} /></button>}</div>
         </form>
       </div>
     </main>

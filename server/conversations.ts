@@ -10,10 +10,10 @@ export const ConversationsDoc = defineDoc({
   checkpointWhen: () => true,
 });
 
-export async function addConversation(tx: Tx, id: ConversationId) {
+export async function addConversation(tx: Tx, id: ConversationId, workspaceId?: string) {
   const index = await tx.doc(ConversationsDoc);
   if (!index.items.some((item) => item.id === String(id))) {
-    index.items.unshift({ id: String(id), title: '', createdAt: Date.now() });
+    index.items.unshift({ id: String(id), title: '', createdAt: Date.now(), ...(workspaceId ? { workspaceId } : {}) });
   }
 }
 

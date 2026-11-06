@@ -45,18 +45,20 @@ export function useConversations() {
     window.addEventListener('popstate', onPopState);
     return () => window.removeEventListener('popstate', onPopState);
   }, [conversations, select]);
-  async function create() {
+  async function create(input: { workspaceId?: string; path?: string; trusted?: boolean } = {}) {
     if (creating) return;
     setCreating(true);
     setError('');
     try {
-      const response = await fetch('/api/conversations', { method: 'POST' });
-      if (!response.ok) throw new Error('无法新建会话');
-      const item: ConversationSummary = await response.json();
+      const response = await fetch(input.path === undefined ? '/api/conversations' : '/api/workspaces', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(input) });
+      if (!response.ok) throw new Error((await response.json()).error);
+      const data = await response.json();
+      const item: ConversationSummary = input.path === undefined ? data : data.conversation;
       requestVersion.current++;
       setConversations((items) => [item, ...items.filter((existing) => existing.id !== item.id)]);
       select(item.id);
-    } catch (error) { setError((error as Error).message); }
+      return item;
+    } catch (error) { setError((error as Error).message); throw error; }
     finally { setCreating(false); }
   }
   async function rename(id: string, title: string) {

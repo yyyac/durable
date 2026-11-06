@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
-import { ArrowUp, Square } from 'lucide-react';
+import { ArrowUp, Square, FolderOpen } from 'lucide-react';
 import { SettingsDialog } from './SettingsDialog';
 import { ModelSelector } from './ModelSelector';
 import { MessageContent } from './MessageContent';
@@ -65,26 +65,39 @@ export function App() {
     } catch (error) { if (currentId.current === stoppingId) setError((error as Error).message); }
     finally { if (currentId.current === stoppingId) setStopping(false); }
   }
+  async function openDirectory() {
+    if (!state) return;
+    const openingId = state.id;
+    setError('');
+    try {
+      const response = await fetch(`/api/conversations/${openingId}/directory/open`, { method: 'POST' });
+      if (!response.ok) throw new Error((await response.json()).error);
+    } catch (error) { if (currentId.current === openingId) setError((error as Error).message); }
+  }
   const visibleGeneration = state?.generation?.content.some((block) => (block.type === 'text' ? block.text : block.thinking).trim()) ? state.generation : null;
   const messages = [...(state?.messages ?? []), ...(visibleGeneration ? [visibleGeneration] : [])];
   const requesting = (submitting || state?.busy) && !visibleGeneration;
+  const empty = !messages.length && !requesting;
+  const directoryButton = state?.directory && <button type="button" aria-label="打开工作目录" title={state.directory.path} className={styles.directory} onClick={() => { void openDirectory(); }}><FolderOpen size={14} /><span>{state.directory.path}</span></button>;
   const { scrollRef, onScroll } = useFollowingScroll(state?.id, messages);
   return <div className={styles.workbench}>
     <Sidebar conversations={conversations} selectedId={selectedId} onSelect={select} onCreate={() => { void create(); }} onRename={rename} onArchive={archive} creating={creating || !selectedId}>
       <SettingsDialog settings={settings} onSaved={setSettings} />
     </Sidebar>
-    <main className={styles.main}>
-      <header className={styles.header}>{conversations.find((conversation) => conversation.id === selectedId)?.title ?? '新会话'}</header>
+    <main className={`${styles.main} ${empty ? styles.mainEmpty : ''}`}>
+      {!empty && <header className={styles.header}><h2 aria-label="会话标题">{conversations.find((conversation) => conversation.id === selectedId)?.title ?? '新会话'}</h2>{directoryButton}</header>}
       <div className={styles.messages} ref={scrollRef} onScroll={onScroll}>
         {messages.length || requesting ? <div className={styles.transcript}>{messages.map((message) => <article key={`${state?.id}:${message.role}:${message.timestamp}`} className={message.role === 'user' ? styles.userMessage : styles.assistantMessage}>
           <MessageContent message={message} streaming={message === state?.generation} showFailureDetail={state?.busy || !canRetryReply(state?.failure) || message !== state?.messages.at(-1)} />
-        </article>)}{requesting && <div role="status" aria-label="正在请求模型" className={styles.requesting}><BrandLogo size={22} className={styles.requestLogo} /><span>请求中…</span></div>}</div> : <div className={styles.empty}><h2>开始一次对话</h2>{selected ? <p>{selected.model.name}</p> : <><p>尚未配置模型</p><p>请先在设置中添加模型服务。</p></>}</div>}
+        </article>)}{requesting && <div role="status" aria-label="正在请求模型" className={styles.requesting}><BrandLogo size={22} className={styles.requestLogo} /><span>请求中…</span></div>}</div> : <div className={styles.empty}><h2><BrandLogo size={46} />Agent 工作台</h2>{!selected && <><p>尚未配置模型</p><p>请先在设置中添加模型服务。</p></>}</div>}
         {!state?.busy && canRetryReply(state?.failure) && <div role="alert" className={styles.failureNotice}>
           <p>回复失败：{state?.failure?.detail || '模型未能完成回复，请检查模型服务后重试。'}</p>
           <button type="button" onClick={() => { void retry(); }} disabled={submitting || !selected}>重试回复</button>
         </div>}
       </div>
       <div className={styles.composerArea}>
+        {empty && directoryButton}
+        {state?.directory && !state.directory.available && <p role="status" className={styles.connection}><strong>工作目录不可用</strong>，原目录可能已移动或删除。历史记录仍然保留。</p>}
         {connection === 'reconnecting' && <p role="status" className={styles.connection}>连接已断开，正在重连…</p>}
         {state?.failure?.reason === 'aborted' && messages.at(-1)?.termination !== 'stopped' && <p role="status" className={styles.connection}>已停止</p>}
         {(error || listError) && <p role="alert" className={styles.error}>{error || listError}</p>}

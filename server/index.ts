@@ -7,6 +7,7 @@ import { Runtime, context, stateFrom } from './runtime.js';
 import { ConversationBusy } from '@earendil-works/pi-durable';
 import { streamSSE } from 'hono/streaming';
 import { listConversations, titleConversation, renameConversation, archiveConversation } from './conversations.js';
+import { openLocalDirectory } from './directories.js';
 
 const app = new Hono();
 const settings = new SettingsStore(resolve(process.env.WORKBENCH_DATA_DIR ?? '.data'));
@@ -68,6 +69,13 @@ app.post('/api/conversations/:id/stop', async (c) => {
     return c.json({ ok: true });
   } catch (error) { return c.json({ error: (error as Error).message }, 400); }
 });
+app.post('/api/conversations/:id/directory/open', async (c) => {
+  try {
+    const conversation = await runtime.conversation(c.req.param('id'));
+    await openLocalDirectory(await runtime.requireDirectory(conversation));
+    return c.json({ ok: true });
+  } catch (error) { return c.json({ error: (error as Error).message }, 400); }
+});
 app.get('/api/conversations/:id/events', async (c) => {
   const conversation = await runtime.conversation(c.req.param('id'));
   return streamSSE(c, async (stream) => {
@@ -78,7 +86,7 @@ app.get('/api/conversations/:id/events', async (c) => {
       const publish = async (view: typeof watch.value) => {
         for (const entry of view.entries) entries.set(entry.id, entry);
         const modelContext = await conversation.context(context, { at: view.entries.at(-1)?.id ?? view.before });
-        await stream.writeSSE({ event: 'state', data: JSON.stringify(stateFrom(view, [...entries.values()], modelContext.messages, await runtime.thinking.read(conversation.id))) });
+        await stream.writeSSE({ event: 'state', data: JSON.stringify({ ...stateFrom(view, [...entries.values()], modelContext.messages, await runtime.thinking.read(conversation.id)), directory: await runtime.directory(conversation) }) });
       };
       await publish(watch.value);
       watch.start(async (call) => { if (call.kind === 'value') await publish(call.value); });

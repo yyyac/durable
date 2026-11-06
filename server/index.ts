@@ -6,8 +6,9 @@ import { SettingsStore } from './settings.js';
 import { Runtime, context, stateFrom } from './runtime.js';
 import { ConversationBusy, type ConversationId } from '@earendil-works/pi-durable';
 import { streamSSE } from 'hono/streaming';
-import { listConversations, titleConversation, renameConversation, archiveConversation } from './conversations.js';
+import { ConversationsDoc, listConversations, titleConversation, renameConversation, archiveConversation } from './conversations.js';
 import { openLocalDirectory } from './directories.js';
+import { previewRelocation, relocateDirectory } from './directory-relocation.js';
 import { ToolCallsDoc } from './tool-calls.js';
 import { confirmToolCall } from './tool-recovery.js';
 import { ArchivedWorkspace, WorkspacesDoc, renameWorkspace, setWorkspaceArchived } from './workspaces.js';
@@ -135,13 +136,28 @@ app.post('/api/conversations/:id/directory/open', async (c) => {
     return c.json({ ok: true });
   } catch (error) { return c.json({ error: (error as Error).message }, 400); }
 });
+app.post('/api/conversations/:id/directory/preview', async (c) => {
+  try {
+    const input = await c.req.json();
+    const conversation = await runtime.conversation(c.req.param('id'));
+    return c.json(await runtime.harness.commit((tx) => previewRelocation(tx, conversation.id, input.path), context));
+  } catch (error) { return c.json({ error: (error as Error).message }, 400); }
+});
+app.post('/api/conversations/:id/directory/relocate', async (c) => {
+  try {
+    const input = await c.req.json();
+    const conversation = await runtime.conversation(c.req.param('id'));
+    return c.json(await runtime.harness.commit((tx) => relocateDirectory(tx, conversation.id, input), context));
+  } catch (error) { return c.json({ error: (error as Error).message }, 409); }
+});
 app.get('/api/conversations/:id/events', async (c) => {
   const conversation = await runtime.conversation(c.req.param('id'));
   return streamSSE(c, async (stream) => {
     const watch = await conversation.watch(context);
     const toolWatch = await runtime.harness.watchDoc(ToolCallsDoc, conversation.id, context);
     const workspaceWatch = await runtime.harness.watchDoc(WorkspacesDoc, context);
-    stream.onAbort(() => { void watch.stop(); void toolWatch?.stop(); void workspaceWatch?.stop(); });
+    const directoryWatch = await runtime.harness.watchDoc(ConversationsDoc, context);
+    stream.onAbort(() => { void watch.stop(); void toolWatch?.stop(); void workspaceWatch?.stop(); void directoryWatch?.stop(); });
     try {
       const entries = new Map((await runtime.olderEntries(conversation, watch.value)).map((entry) => [entry.id, entry]));
       const publish = async (view: typeof watch.value) => {
@@ -158,8 +174,9 @@ app.get('/api/conversations/:id/events', async (c) => {
       watch.start(async (call) => { if (call.kind === 'value') { latestView = call.value; schedulePublish(); } });
       toolWatch?.start(async () => { schedulePublish(); });
       workspaceWatch?.start(async () => { schedulePublish(); });
+      directoryWatch?.start(async () => { schedulePublish(); });
       await watch.closed;
-    } finally { await watch.stop(); await toolWatch?.stop(); await workspaceWatch?.stop(); }
+    } finally { await watch.stop(); await toolWatch?.stop(); await workspaceWatch?.stop(); await directoryWatch?.stop(); }
   });
 });
 app.use('/*', serveStatic({ root: './dist' }));

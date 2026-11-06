@@ -9,6 +9,7 @@ import { ToolCallsDoc, unfinished, type RecoveryCall } from './tool-calls.js';
 import { ConversationsDoc } from './conversations.js';
 import { WorkspacesDoc, requireWorkspace, checkConversationActive, requireConversationActive } from './workspaces.js';
 import { conversationDirectory, inspectDirectory } from './directories.js';
+import { requireBoundDirectory } from './directory-relocation.js';
 import { requireRunCapacity } from './run-admission.js';
 import { lstat } from 'node:fs/promises';
 import { resolve } from 'node:path';
@@ -57,6 +58,7 @@ export function recoverableTool<T extends ToolRegistration>(tool: T, operation: 
       if (!api.env) throw new Error('工作目录不可用，无法执行本机工具');
       const key = String(api.taskId);
       await api.commit(async (tx) => {
+        await requireBoundDirectory(tx, api.conversationId, api.env!.cwd);
         const native = await tx.task(api.taskId);
         const input = native?.input as { assistant?: number } | undefined;
         if (input?.assistant === undefined || native?.owner === undefined) throw new Error('工具调用缺少持久身份');

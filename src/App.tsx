@@ -5,6 +5,7 @@ import { ModelSelector } from './ModelSelector';
 import { MessageContent } from './MessageContent';
 import { LocalToolsNotice } from './LocalToolsNotice';
 import { WorkspaceSelector } from './WorkspaceSelector';
+import { DirectoryRelocation } from './DirectoryRelocation';
 import { useFollowingScroll } from './useFollowingScroll';
 import { Sidebar } from './Sidebar';
 import { BrandLogo } from './BrandLogo';
@@ -22,8 +23,8 @@ export function App() {
   const [error, setError] = useState('');
   const selected = selectedModel(settings);
   const { conversations, selectedId, select, create, creating, refresh, rename, archive, error: listError } = useConversations();
-  const { state, connection } = useConversation(selectedId);
-  useEffect(() => { if (connection === 'connected') void refresh().catch((error: Error) => setError(error.message)); }, [connection, refresh, state?.awaitingConfirmation]);
+  const { state, connection, refresh: refreshConversation } = useConversation(selectedId);
+  useEffect(() => { if (connection === 'connected') void refresh().catch((error: Error) => setError(error.message)); }, [connection, refresh, state?.awaitingConfirmation, state?.directory?.version]);
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const refreshWorkspaces = useCallback(async () => {
     const response = await fetch('/api/workspaces');
@@ -53,7 +54,7 @@ export function App() {
       if (!response.ok) throw new Error((await response.json()).error);
       if (currentId.current === sendingId) setInput('');
       await refresh();
-    } catch (error) { if (currentId.current === sendingId) setError((error as Error).message); }
+    } catch (error) { if (currentId.current === sendingId) { setError((error as Error).message); refreshConversation(); } }
     finally { if (currentId.current === sendingId) setSubmitting(false); }
   }
   async function retry() {
@@ -64,7 +65,7 @@ export function App() {
     try {
       const response = await fetch(`/api/conversations/${retryingId}/retry`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ modelSelection: settings?.selectedModel }) });
       if (!response.ok) throw new Error((await response.json()).error);
-    } catch (error) { if (currentId.current === retryingId) setError((error as Error).message); }
+    } catch (error) { if (currentId.current === retryingId) { setError((error as Error).message); refreshConversation(); } }
     finally { if (currentId.current === retryingId) setSubmitting(false); }
   }
   async function stop() {
@@ -124,7 +125,7 @@ export function App() {
       <div className={styles.composerArea}>
         {workspaceArchived && <div className={workspaceStyles.archiveNotice}><p role="status">工作区已归档，仅可查看历史。</p><button type="button" onClick={() => { if (current?.workspaceId) void setWorkspaceArchived(current.workspaceId, false).catch((error: Error) => setError(error.message)); }}>恢复工作区</button></div>}
         {empty && <div className={styles.directoryPicker}><WorkspaceSelector workspaces={workspaces} workspaceId={current?.workspaceId} defaultDirectory={current?.defaultDirectory} disabled={creating || !state} onChoose={(workspaceId) => create({ workspaceId })} onAdd={async (path) => { await create({ path, trusted: true }); await refreshWorkspaces(); }} onRestore={(id) => setWorkspaceArchived(id, false)} />{directoryButton}</div>}
-        {state?.directory && !state.directory.available && <p role="status" className={styles.connection}><strong>工作目录不可用</strong>，原目录可能已移动或删除。历史记录仍然保留。</p>}
+        {state?.directory && !state.directory.available && <div className={styles.connection}><p role="status"><strong>工作目录不可用</strong>，原目录可能已移动或删除。历史记录仍然保留。</p>{!workspaceArchived && <DirectoryRelocation key={state.id} conversationId={state.id} path={state.directory.path} onSaved={async () => { await Promise.all([refresh(), refreshWorkspaces()]); refreshConversation(); }} />}</div>}
         {connection === 'reconnecting' && <p role="status" className={styles.connection}>连接已断开，正在重连…</p>}
         {state?.failure?.reason === 'aborted' && messages.at(-1)?.termination !== 'stopped' && <p role="status" className={styles.connection}>已停止</p>}
         {(error || listError) && <p role="alert" className={styles.error}>{error || listError}</p>}

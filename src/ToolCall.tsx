@@ -1,5 +1,5 @@
 import { useEffect, useId, useState } from 'react';
-import { Check, ChevronRight, FileText, LoaderCircle, Square, X } from 'lucide-react';
+import { Check, ChevronRight, FileText, LoaderCircle, Square, Terminal, X } from 'lucide-react';
 import type { ToolCallState } from './types';
 import styles from './ToolCall.module.css';
 
@@ -20,16 +20,17 @@ export function ToolCall({ tool, conversationId }: { tool: ToolCallState; conver
   }
   const id = useId();
   const Icon = tool.status === 'completed' ? Check : tool.status === 'failed' ? X : tool.status === 'stopped' ? Square : LoaderCircle;
+  const ToolIcon = tool.name === 'powershell' ? Terminal : FileText;
   return <section className={styles.tool} data-tool-call-id={tool.id}>
     <button type="button" className={styles.head} aria-expanded={expanded} aria-controls={id} onClick={() => setExpanded(!expanded)}>
-      <FileText size={18} /><span className={styles.name}>{tool.name}</span><span className={styles.path}>{String(tool.arguments.path ?? '')}</span><span className={`${styles.status} ${tool.status === 'failed' ? styles.failed : ''}`}><Icon size={13} />{labels[tool.status]}</span><ChevronRight size={14} className={expanded ? styles.expanded : ''} />
+      <ToolIcon size={18} /><span className={styles.name}>{tool.name}</span><span className={styles.path}>{String(tool.arguments.path ?? tool.arguments.command ?? '')}</span><span className={`${styles.status} ${tool.status === 'failed' ? styles.failed : ''}`}><Icon size={13} />{labels[tool.status]}</span><ChevronRight size={14} className={expanded ? styles.expanded : ''} />
     </button>
     <div id={id} hidden={!expanded} className={styles.body}>
       {tool.cwd && <div className={styles.directory}>工作目录：{tool.cwd}</div>}
       <pre aria-label="工具参数">{JSON.stringify(tool.arguments, null, 2)}</pre>
       <pre data-testid="tool-output">{tool.output || (tool.status === 'pending' || tool.status === 'running' ? '等待工具输出…' : '无文本输出')}</pre>
     </div>
-    {tool.status === 'awaiting' && <div className={styles.confirmation}><p>写入可能已经发生。确认仅重试这一次调用，停止不会撤销已产生的改动。</p><button type="button" disabled={acting} onClick={() => { void decide('retry'); }}>确认重试</button><button type="button" disabled={acting} onClick={() => { void decide('stop'); }}>停止本轮</button></div>}
+    {tool.status === 'awaiting' && <div className={styles.confirmation}><p>{tool.name === 'powershell' ? '命令可能已经产生外部效果。' : '写入可能已经发生。'}确认仅重试这一次调用，停止不会撤销已产生的改动。</p><button type="button" disabled={acting} onClick={() => { void decide('retry'); }}>确认重试</button><button type="button" disabled={acting} onClick={() => { void decide('stop'); }}>停止本轮</button></div>}
     {error && <p role="alert" className={styles.failed}>{error}</p>}
   </section>;
 }
